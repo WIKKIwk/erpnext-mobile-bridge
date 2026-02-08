@@ -360,9 +360,9 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - [x] Rust minimal server skeleton.
 - [x] Rust config loader.
 - [x] Rust session JSON store.
-- [ ] Rust profile JSON store.
+- [x] Rust profile JSON store.
 - [x] Auth endpointlarining birinchi porti.
-- [ ] Profile endpointlarining birinchi porti.
+- [x] Profile endpointlarining birinchi porti.
 - [x] Cargo test/check.
 
 ## Ochiq Savollar
@@ -2124,3 +2124,80 @@ Natija:
 Keyingi domain tanlash:
 
 - Profile standalone yoki Push subsystemdan biri keyingi tabiiy kichik scope.
+
+## 2026-05-13: Profile Domain Parity Finish
+
+Audit qilingan Go joylar:
+
+- `internal/mobileapi/server.go`
+  `handleProfile`
+  `handleProfileAvatar`
+  `handleProfileAvatarView`
+  `avatarProxyURL`
+  `withAvatarProxy`
+- `internal/core/service.go`
+  `Profile`
+  `UpdateNickname`
+  `UploadAvatar`
+  `mergeProfilePrefs`
+- `internal/core/profile_store.go`
+- `internal/erpnext/supplier.go`
+  `UploadSupplierImage`
+  `DownloadFile`
+
+Go behavior contract:
+
+- `/v1/mobile/profile`
+  auth talab qiladi.
+  `GET` profile refresh qiladi, session update qiladi, supplier avatar bo'lsa proxy URL qaytaradi.
+  `PUT` nickname JSON o'qiydi, prefs storega yozadi, session update qiladi.
+  boshqa method `405 {"error":"method not allowed"}`.
+- `/v1/mobile/profile/avatar`
+  faqat `POST`.
+  auth talab qiladi.
+  body `5 MiB` limit, multipart parse xatosi `400 invalid multipart`.
+  `avatar` field bo'lmasa `400 avatar is required`.
+  read/upload xatolari mos ravishda `avatar read failed` / `avatar upload failed`.
+- `/v1/mobile/profile/avatar/view`
+  Go method cheklamaydi.
+  query `token` bo'lsa shu sessiondan o'qiydi, bo'lmasa bearer auth ishlatadi.
+  faqat supplier ruxsatli.
+  avatar URL bo'sh bo'lsa `404`.
+  ERP file download xatosi `500 avatar fetch failed`.
+- Supplier avatar proxy URL faqat supplier va non-empty avatar uchun:
+  `/v1/mobile/profile/avatar/view?token=...`.
+- ERP upload Go `filepath.Base(filename)` bilan file nomini jo'natadi.
+
+Rust'da yopilgan parity gaplar:
+
+- `avatar/view` route `GET`dan `any`ga o'tkazildi, Go kabi method cheklanmaydi.
+- ERPNext supplier avatar upload filename Go kabi basename qilinadi.
+- Profile route testga `avatar/view` token query bilan non-GET method success coverage qo'shildi.
+- ERPNext helper testga upload filename basename coverage qo'shildi.
+
+Rust'dagi mavjud qismlar:
+
+- Core service:
+  `src/core/profile/service.rs`
+- Ports:
+  `src/core/profile/ports.rs`
+- JSON prefs store:
+  `src/store/profile_store.rs`
+- HTTP handler:
+  `src/http/handlers/profile.rs`
+- ERPNext adapter:
+  `src/erpnext/suppliers.rs`
+  `src/erpnext/customers.rs`
+- Route tests:
+  `src/http/profile_route_tests.rs`
+
+Test holati:
+
+- Rust `cargo test`:
+  `274 passed`, `0 failed`.
+
+Natija:
+
+- Profile domain route coverage:
+  `3/3`.
+- Profile mobile API route/response contract Rustda Go bilan mos yopildi.
