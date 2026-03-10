@@ -2,10 +2,13 @@ APP := ./cmd/core
 ADDR ?= :8081
 PID_FILE := .core.pid
 LOG_FILE := .core.log
+ENV_FILE := .env
 
 .PHONY: run stop test fmt tidy
 
 run: stop
+	@rm -f "$(ENV_FILE)"
+	@echo "Cleared previous core runtime config"
 	@echo "Starting core on $(ADDR)"
 	@MOBILE_API_ADDR="$(ADDR)" go run $(APP)
 
