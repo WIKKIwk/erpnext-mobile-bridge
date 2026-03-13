@@ -22,6 +22,14 @@ func (s *adminSuppliersERPStub) SearchItems(ctx context.Context, baseURL, apiKey
 	return nil, nil
 }
 
+func (s *adminSuppliersERPStub) SearchCustomers(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Customer, error) {
+	return nil, nil
+}
+
+func (s *adminSuppliersERPStub) GetCustomer(ctx context.Context, baseURL, apiKey, apiSecret, id string) (erpnext.Customer, error) {
+	return erpnext.Customer{}, nil
+}
+
 func (s *adminSuppliersERPStub) SearchSuppliers(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Supplier, error) {
 	if s.searchSuppliers != nil {
 		return s.searchSuppliers(ctx, baseURL, apiKey, apiSecret, query, limit)
@@ -70,6 +78,10 @@ func (s *adminSuppliersERPStub) SearchWarehouses(ctx context.Context, baseURL, a
 }
 
 func (s *adminSuppliersERPStub) SearchSupplierItems(ctx context.Context, baseURL, apiKey, apiSecret, supplier, query string, limit int) ([]erpnext.Item, error) {
+	return nil, nil
+}
+
+func (s *adminSuppliersERPStub) ListCustomerItems(ctx context.Context, baseURL, apiKey, apiSecret, customerRef, query string, limit int) ([]erpnext.Item, error) {
 	return nil, nil
 }
 
@@ -138,6 +150,10 @@ func (s *adminSuppliersERPStub) DownloadFile(ctx context.Context, baseURL, apiKe
 
 func (s *adminSuppliersERPStub) CreateDraftPurchaseReceipt(ctx context.Context, baseURL, apiKey, apiSecret string, input erpnext.CreatePurchaseReceiptInput) (erpnext.PurchaseReceiptDraft, error) {
 	return erpnext.PurchaseReceiptDraft{}, nil
+}
+
+func (s *adminSuppliersERPStub) CreateAndSubmitStockEntry(ctx context.Context, baseURL, apiKey, apiSecret string, input erpnext.CreateStockEntryInput) (erpnext.StockEntryResult, error) {
+	return erpnext.StockEntryResult{}, nil
 }
 
 func (s *adminSuppliersERPStub) ConfirmAndSubmitPurchaseReceipt(ctx context.Context, baseURL, apiKey, apiSecret, name string, acceptedQty, returnedQty float64, returnReason, returnComment string) (erpnext.PurchaseReceiptSubmissionResult, error) {

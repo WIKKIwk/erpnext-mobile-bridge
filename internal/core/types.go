@@ -76,10 +76,26 @@ type SupplierDirectoryEntry struct {
 	Phone string `json:"phone"`
 }
 
+type CustomerDirectoryEntry struct {
+	Ref   string `json:"ref"`
+	Name  string `json:"name"`
+	Phone string `json:"phone"`
+}
+
 type SupplierHomeSummary struct {
 	PendingCount   int `json:"pending_count"`
 	SubmittedCount int `json:"submitted_count"`
 	ReturnedCount  int `json:"returned_count"`
+}
+
+type SupplierStatusBreakdownEntry struct {
+	ItemCode         string  `json:"item_code"`
+	ItemName         string  `json:"item_name"`
+	ReceiptCount     int     `json:"receipt_count"`
+	TotalSentQty     float64 `json:"total_sent_qty"`
+	TotalAcceptedQty float64 `json:"total_accepted_qty"`
+	TotalReturnedQty float64 `json:"total_returned_qty"`
+	UOM              string  `json:"uom"`
 }
 
 type WerkaHomeSummary struct {
@@ -115,6 +131,23 @@ type WerkaUnannouncedCreateRequest struct {
 	SupplierRef string  `json:"supplier_ref"`
 	ItemCode    string  `json:"item_code"`
 	Qty         float64 `json:"qty"`
+}
+
+type WerkaCustomerIssueCreateRequest struct {
+	CustomerRef string  `json:"customer_ref"`
+	ItemCode    string  `json:"item_code"`
+	Qty         float64 `json:"qty"`
+}
+
+type WerkaCustomerIssueRecord struct {
+	EntryID      string  `json:"entry_id"`
+	CustomerRef  string  `json:"customer_ref"`
+	CustomerName string  `json:"customer_name"`
+	ItemCode     string  `json:"item_code"`
+	ItemName     string  `json:"item_name"`
+	UOM          string  `json:"uom"`
+	Qty          float64 `json:"qty"`
+	CreatedLabel string  `json:"created_label"`
 }
 
 type SupplierUnannouncedResponseRequest struct {

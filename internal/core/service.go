@@ -29,6 +29,8 @@ const supplierAckEventPrefix = "supplier_ack:"
 
 type ERPClient interface {
 	SearchItems(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Item, error)
+	SearchCustomers(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Customer, error)
+	GetCustomer(ctx context.Context, baseURL, apiKey, apiSecret, id string) (erpnext.Customer, error)
 	SearchSuppliers(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Supplier, error)
 	GetSupplier(ctx context.Context, baseURL, apiKey, apiSecret, id string) (erpnext.Supplier, error)
 	UpdateSupplierDetails(ctx context.Context, baseURL, apiKey, apiSecret, id, details string) error
@@ -41,6 +43,7 @@ type ERPClient interface {
 	ListAssignedSupplierItems(ctx context.Context, baseURL, apiKey, apiSecret, supplier string, limit int) ([]erpnext.Item, error)
 	AssignSupplierToItem(ctx context.Context, baseURL, apiKey, apiSecret, itemCode, supplier string) error
 	RemoveSupplierFromItem(ctx context.Context, baseURL, apiKey, apiSecret, itemCode, supplier string) error
+	ListCustomerItems(ctx context.Context, baseURL, apiKey, apiSecret, customerRef, query string, limit int) ([]erpnext.Item, error)
 	ListPendingPurchaseReceipts(ctx context.Context, baseURL, apiKey, apiSecret string, limit int) ([]erpnext.PurchaseReceiptDraft, error)
 	ListPendingPurchaseReceiptsPage(ctx context.Context, baseURL, apiKey, apiSecret string, limit, offset int) ([]erpnext.PurchaseReceiptDraft, error)
 	ListTelegramPurchaseReceipts(ctx context.Context, baseURL, apiKey, apiSecret string, limit int) ([]erpnext.PurchaseReceiptDraft, error)
@@ -53,6 +56,7 @@ type ERPClient interface {
 	AddPurchaseReceiptComment(ctx context.Context, baseURL, apiKey, apiSecret, name, content string) error
 	UpdatePurchaseReceiptRemarks(ctx context.Context, baseURL, apiKey, apiSecret, name, remarks string) error
 	CreateDraftPurchaseReceipt(ctx context.Context, baseURL, apiKey, apiSecret string, input erpnext.CreatePurchaseReceiptInput) (erpnext.PurchaseReceiptDraft, error)
+	CreateAndSubmitStockEntry(ctx context.Context, baseURL, apiKey, apiSecret string, input erpnext.CreateStockEntryInput) (erpnext.StockEntryResult, error)
 	ConfirmAndSubmitPurchaseReceipt(ctx context.Context, baseURL, apiKey, apiSecret, name string, acceptedQty, returnedQty float64, returnReason, returnComment string) (erpnext.PurchaseReceiptSubmissionResult, error)
 	UploadSupplierImage(ctx context.Context, baseURL, apiKey, apiSecret, supplierID, filename, contentType string, content []byte) (string, error)
 	DownloadFile(ctx context.Context, baseURL, apiKey, apiSecret, fileURL string) (string, []byte, error)
@@ -859,6 +863,88 @@ func (a *ERPAuthenticator) WerkaSuppliers(ctx context.Context, limit int) ([]Sup
 		})
 	}
 	return result, nil
+}
+
+func (a *ERPAuthenticator) WerkaCustomers(ctx context.Context, query string, limit int) ([]CustomerDirectoryEntry, error) {
+	items, err := a.erp.SearchCustomers(ctx, a.baseURL, a.apiKey, a.apiSecret, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]CustomerDirectoryEntry, 0, len(items))
+	for _, item := range items {
+		result = append(result, CustomerDirectoryEntry{
+			Ref:   item.ID,
+			Name:  item.Name,
+			Phone: item.Phone,
+		})
+	}
+	return result, nil
+}
+
+func (a *ERPAuthenticator) WerkaCustomerItems(ctx context.Context, customerRef, query string, limit int) ([]SupplierItem, error) {
+	items, err := a.erp.ListCustomerItems(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(customerRef), query, limit)
+	if err != nil {
+		return nil, err
+	}
+	return a.mapSupplierItems(ctx, items)
+}
+
+func (a *ERPAuthenticator) CreateWerkaCustomerIssue(ctx context.Context, principal Principal, customerRef, itemCode string, qty float64) (WerkaCustomerIssueRecord, error) {
+	if principal.Role != RoleWerka {
+		return WerkaCustomerIssueRecord{}, ErrUnauthorized
+	}
+	customer, err := a.erp.GetCustomer(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(customerRef))
+	if err != nil {
+		return WerkaCustomerIssueRecord{}, err
+	}
+	items, err := a.erp.ListCustomerItems(ctx, a.baseURL, a.apiKey, a.apiSecret, customer.ID, "", 500)
+	if err != nil {
+		return WerkaCustomerIssueRecord{}, err
+	}
+	allowed := false
+	for _, item := range items {
+		if strings.EqualFold(strings.TrimSpace(item.Code), strings.TrimSpace(itemCode)) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return WerkaCustomerIssueRecord{}, fmt.Errorf("customer uchun mahsulot biriktirilmagan")
+	}
+	resolvedItems, err := a.erp.GetItemsByCodes(ctx, a.baseURL, a.apiKey, a.apiSecret, []string{strings.TrimSpace(itemCode)})
+	if err != nil {
+		return WerkaCustomerIssueRecord{}, err
+	}
+	if len(resolvedItems) == 0 {
+		return WerkaCustomerIssueRecord{}, fmt.Errorf("item topilmadi")
+	}
+	item := resolvedItems[0]
+	warehouse, err := a.resolveWarehouse(ctx)
+	if err != nil {
+		return WerkaCustomerIssueRecord{}, err
+	}
+	remarks := strings.TrimSpace("Accord Customer: " + customer.ID + "\nAccord Customer Name: " + customer.Name)
+	result, err := a.erp.CreateAndSubmitStockEntry(ctx, a.baseURL, a.apiKey, a.apiSecret, erpnext.CreateStockEntryInput{
+		EntryType:       "Material Issue",
+		ItemCode:        strings.TrimSpace(itemCode),
+		Qty:             qty,
+		UOM:             item.UOM,
+		SourceWarehouse: warehouse,
+		Remarks:         remarks,
+	})
+	if err != nil {
+		return WerkaCustomerIssueRecord{}, err
+	}
+	return WerkaCustomerIssueRecord{
+		EntryID:      result.Name,
+		CustomerRef:  customer.ID,
+		CustomerName: customer.Name,
+		ItemCode:     item.Code,
+		ItemName:     item.Name,
+		UOM:          item.UOM,
+		Qty:          qty,
+		CreatedLabel: time.Now().Format("2006-01-02"),
+	}, nil
 }
 
 func (a *ERPAuthenticator) WerkaSupplierItems(ctx context.Context, supplierRef, query string, limit int) ([]SupplierItem, error) {

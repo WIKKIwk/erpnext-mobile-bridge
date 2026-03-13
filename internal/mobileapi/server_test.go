@@ -15,6 +15,7 @@ import (
 )
 
 type fakeERPClient struct {
+	customers          []erpnext.Customer
 	suppliers          []erpnext.Supplier
 	items              []erpnext.Item
 	supplierItems      map[string]map[string]bool
@@ -29,10 +30,41 @@ type fakeERPClient struct {
 	lastSupplierOffset int
 	lastTelegramLimit  int
 	lastTelegramOffset int
+	lastStockEntry     erpnext.CreateStockEntryInput
 }
 
 func (f *fakeERPClient) SearchItems(_ context.Context, _, _, _, query string, limit int) ([]erpnext.Item, error) {
 	return filterFakeItems(f.items, query, limit), nil
+}
+
+func (f *fakeERPClient) SearchCustomers(_ context.Context, _, _, _, query string, limit int) ([]erpnext.Customer, error) {
+	if limit <= 0 || limit > len(f.customers) {
+		limit = len(f.customers)
+	}
+	if query == "" {
+		return append([]erpnext.Customer(nil), f.customers[:limit]...), nil
+	}
+	lowerQuery := strings.ToLower(query)
+	result := make([]erpnext.Customer, 0, limit)
+	for _, item := range f.customers {
+		if strings.Contains(strings.ToLower(item.ID), lowerQuery) ||
+			strings.Contains(strings.ToLower(item.Name), lowerQuery) {
+			result = append(result, item)
+		}
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result, nil
+}
+
+func (f *fakeERPClient) GetCustomer(_ context.Context, _, _, _, id string) (erpnext.Customer, error) {
+	for _, item := range f.customers {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return erpnext.Customer{}, nil
 }
 
 func (f *fakeERPClient) SearchSuppliers(_ context.Context, _, _, _, _ string, _ int) ([]erpnext.Supplier, error) {
@@ -72,6 +104,10 @@ func (f *fakeERPClient) EnsureSupplier(_ context.Context, _, _, _ string, input 
 
 func (f *fakeERPClient) SearchSupplierItems(_ context.Context, _, _, _, _, _ string, _ int) ([]erpnext.Item, error) {
 	return f.items, nil
+}
+
+func (f *fakeERPClient) ListCustomerItems(_ context.Context, _, _, _, _ string, query string, limit int) ([]erpnext.Item, error) {
+	return filterFakeItems(f.items, query, limit), nil
 }
 
 func (f *fakeERPClient) ListAssignedSupplierItems(_ context.Context, _, _, _, supplier string, _ int) ([]erpnext.Item, error) {
@@ -241,6 +277,11 @@ func (f *fakeERPClient) UpdatePurchaseReceiptRemarks(_ context.Context, _, _, _,
 
 func (f *fakeERPClient) CreateDraftPurchaseReceipt(_ context.Context, _, _, _ string, _ erpnext.CreatePurchaseReceiptInput) (erpnext.PurchaseReceiptDraft, error) {
 	return erpnext.PurchaseReceiptDraft{}, nil
+}
+
+func (f *fakeERPClient) CreateAndSubmitStockEntry(_ context.Context, _, _, _ string, input erpnext.CreateStockEntryInput) (erpnext.StockEntryResult, error) {
+	f.lastStockEntry = input
+	return erpnext.StockEntryResult{Name: "STE-0001"}, nil
 }
 
 func (f *fakeERPClient) ConfirmAndSubmitPurchaseReceipt(_ context.Context, _, _, _, _ string, _, _ float64, _, _ string) (erpnext.PurchaseReceiptSubmissionResult, error) {

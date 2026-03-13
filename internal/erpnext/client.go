@@ -46,6 +46,12 @@ type Supplier struct {
 	Details string
 }
 
+type Customer struct {
+	ID    string
+	Name  string
+	Phone string
+}
+
 type CreateStockEntryInput struct {
 	EntryType       string
 	ItemCode        string
@@ -53,6 +59,7 @@ type CreateStockEntryInput struct {
 	UOM             string
 	SourceWarehouse string
 	TargetWarehouse string
+	Remarks         string
 }
 
 type StockEntryResult struct {
@@ -384,6 +391,9 @@ func (c *Client) CreateAndSubmitStockEntry(ctx context.Context, baseURL, apiKey,
 	payload := map[string]interface{}{
 		"stock_entry_type": input.EntryType,
 		"items":            []map[string]interface{}{itemRow},
+	}
+	if strings.TrimSpace(input.Remarks) != "" {
+		payload["remarks"] = strings.TrimSpace(input.Remarks)
 	}
 
 	switch input.EntryType {

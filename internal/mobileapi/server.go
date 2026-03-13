@@ -43,12 +43,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/mobile/notifications/comments", s.handleNotificationComment)
 	mux.HandleFunc("/v1/mobile/supplier/unannounced/respond", s.handleSupplierUnannouncedRespond)
 	mux.HandleFunc("/v1/mobile/supplier/summary", s.handleSupplierSummary)
+	mux.HandleFunc("/v1/mobile/supplier/status-breakdown", s.handleSupplierStatusBreakdown)
+	mux.HandleFunc("/v1/mobile/supplier/status-details", s.handleSupplierStatusDetails)
 	mux.HandleFunc("/v1/mobile/supplier/history", s.handleSupplierHistory)
 	mux.HandleFunc("/v1/mobile/supplier/items", s.handleSupplierItems)
 	mux.HandleFunc("/v1/mobile/supplier/dispatch", s.handleCreateDispatch)
 	mux.HandleFunc("/v1/mobile/werka/summary", s.handleWerkaSummary)
+	mux.HandleFunc("/v1/mobile/werka/customers", s.handleWerkaCustomers)
 	mux.HandleFunc("/v1/mobile/werka/suppliers", s.handleWerkaSuppliers)
 	mux.HandleFunc("/v1/mobile/werka/supplier-items", s.handleWerkaSupplierItems)
+	mux.HandleFunc("/v1/mobile/werka/customer-items", s.handleWerkaCustomerItems)
+	mux.HandleFunc("/v1/mobile/werka/customer-issue/create", s.handleWerkaCustomerIssueCreate)
 	mux.HandleFunc("/v1/mobile/werka/unannounced/create", s.handleWerkaUnannouncedCreate)
 	mux.HandleFunc("/v1/mobile/werka/status-breakdown", s.handleWerkaStatusBreakdown)
 	mux.HandleFunc("/v1/mobile/werka/status-details", s.handleWerkaStatusDetails)
@@ -478,6 +483,45 @@ func (s *Server) handleSupplierSummary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, summary)
 }
 
+func (s *Server) handleSupplierStatusBreakdown(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.authorize(w, r)
+	if !ok {
+		return
+	}
+	if err := requireRole(principal, RoleSupplier); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+	items, err := s.auth.SupplierStatusBreakdown(r.Context(), principal, kind)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "supplier status breakdown failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleSupplierStatusDetails(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.authorize(w, r)
+	if !ok {
+		return
+	}
+	if err := requireRole(principal, RoleSupplier); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+	itemCode := strings.TrimSpace(r.URL.Query().Get("item_code"))
+	items, err := s.auth.SupplierStatusDetails(r.Context(), principal, kind, itemCode)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "supplier status details failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
 func (s *Server) handleSupplierItems(w http.ResponseWriter, r *http.Request) {
 	principal, ok := s.authorize(w, r)
 	if !ok {
@@ -624,6 +668,24 @@ func (s *Server) handleWerkaSuppliers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
+func (s *Server) handleWerkaCustomers(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.authorize(w, r)
+	if !ok {
+		return
+	}
+	if err := requireRole(principal, RoleWerka); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	items, err := s.auth.WerkaCustomers(r.Context(), query, 200)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "werka customers failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
 func (s *Server) handleWerkaSupplierItems(w http.ResponseWriter, r *http.Request) {
 	principal, ok := s.authorize(w, r)
 	if !ok {
@@ -641,6 +703,51 @@ func (s *Server) handleWerkaSupplierItems(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleWerkaCustomerItems(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.authorize(w, r)
+	if !ok {
+		return
+	}
+	if err := requireRole(principal, RoleWerka); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+	customerRef := strings.TrimSpace(r.URL.Query().Get("customer_ref"))
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	items, err := s.auth.WerkaCustomerItems(r.Context(), customerRef, query, 100)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "werka customer items failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleWerkaCustomerIssueCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	principal, ok := s.authorize(w, r)
+	if !ok {
+		return
+	}
+	if err := requireRole(principal, RoleWerka); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+	var req WerkaCustomerIssueCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	record, err := s.auth.CreateWerkaCustomerIssue(r.Context(), principal, req.CustomerRef, req.ItemCode, req.Qty)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "werka customer issue create failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
 }
 
 func (s *Server) handleWerkaUnannouncedCreate(w http.ResponseWriter, r *http.Request) {
