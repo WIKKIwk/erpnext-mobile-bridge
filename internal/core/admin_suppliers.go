@@ -482,7 +482,18 @@ func (a *ERPAuthenticator) AdminUpdateCustomerPhone(ctx context.Context, ref, ph
 	if err := a.erp.UpdateCustomerContact(ctx, a.baseURL, a.apiKey, a.apiSecret, item.ID, normalizedPhone, details); err != nil {
 		return AdminCustomerDetail{}, err
 	}
-	return a.AdminCustomerDetail(ctx, item.ID)
+	state, err := a.adminSupplierState(item.ID)
+	if err != nil {
+		return AdminCustomerDetail{}, err
+	}
+	return AdminCustomerDetail{
+		Ref:               item.ID,
+		Name:              item.Name,
+		Phone:             normalizedPhone,
+		Code:              strings.TrimSpace(state.CustomCode),
+		CodeLocked:        state.isCodeLocked(a.nowUTC()),
+		CodeRetryAfterSec: state.retryAfterSeconds(a.nowUTC()),
+	}, nil
 }
 
 func (a *ERPAuthenticator) AdminRegenerateCustomerCode(ctx context.Context, ref string) (AdminCustomerDetail, error) {
@@ -522,7 +533,14 @@ func (a *ERPAuthenticator) AdminRegenerateCustomerCode(ctx context.Context, ref 
 	if err := a.erp.UpdateCustomerDetails(ctx, a.baseURL, a.apiKey, a.apiSecret, item.ID, details); err != nil {
 		return AdminCustomerDetail{}, err
 	}
-	return a.AdminCustomerDetail(ctx, item.ID)
+	return AdminCustomerDetail{
+		Ref:               item.ID,
+		Name:              item.Name,
+		Phone:             item.Phone,
+		Code:              strings.TrimSpace(state.CustomCode),
+		CodeLocked:        state.isCodeLocked(a.nowUTC()),
+		CodeRetryAfterSec: state.retryAfterSeconds(a.nowUTC()),
+	}, nil
 }
 
 func (a *ERPAuthenticator) supplierAllowedItems(ctx context.Context, principal Principal, query string, limit int) ([]SupplierItem, error) {
