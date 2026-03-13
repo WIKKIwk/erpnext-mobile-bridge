@@ -1218,3 +1218,135 @@ func TestServerAdminWerkaCodeRegenerate(t *testing.T) {
 		t.Fatalf("unexpected werka code: %q", settings.WerkaCode)
 	}
 }
+
+func TestServerSupplierHistoryDeduplicatesReceipts(t *testing.T) {
+	server := NewServer(NewERPAuthenticator(
+		&fakeERPClient{
+			supplierReceipts: []erpnext.PurchaseReceiptDraft{
+				{
+					Name:                 "MAT-PRE-0002",
+					Supplier:             "SUP-001",
+					SupplierName:         "Abdulloh",
+					SupplierDeliveryNote: "TG:+998900000000|64",
+					ItemCode:             "ITEM-001",
+					ItemName:             "Chers001",
+					Qty:                  64,
+					UOM:                  "Nos",
+					PostingDate:          "2026-03-13",
+				},
+				{
+					Name:                 "MAT-PRE-0002",
+					Supplier:             "SUP-001",
+					SupplierName:         "Abdulloh",
+					SupplierDeliveryNote: "TG:+998900000000|64",
+					ItemCode:             "ITEM-001",
+					ItemName:             "Chers001",
+					Qty:                  64,
+					UOM:                  "Nos",
+					PostingDate:          "2026-03-13",
+				},
+			},
+		},
+		"http://localhost:8000",
+		"key",
+		"secret",
+		"Stores - CH",
+		"10",
+		"20",
+		"20WERKA0001",
+		"+998901111111",
+		"Werka",
+		nil,
+		nil,
+	))
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleSupplier,
+		DisplayName: "Abdulloh",
+		Ref:         "SUP-001",
+	})
+	if err != nil {
+		t.Fatalf("failed to create supplier session: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/mobile/supplier/history", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	var items []DispatchRecord
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 deduped receipt, got %d", len(items))
+	}
+}
+
+func TestServerWerkaHistoryDeduplicatesReceipts(t *testing.T) {
+	server := NewServer(NewERPAuthenticator(
+		&fakeERPClient{
+			telegramReceipts: []erpnext.PurchaseReceiptDraft{
+				{
+					Name:                 "MAT-PRE-0003",
+					Supplier:             "SUP-001",
+					SupplierName:         "Abdulloh",
+					SupplierDeliveryNote: "TG:+998900000000|64",
+					ItemCode:             "ITEM-001",
+					ItemName:             "Chers001",
+					Qty:                  64,
+					UOM:                  "Nos",
+					PostingDate:          "2026-03-13",
+				},
+				{
+					Name:                 "MAT-PRE-0003",
+					Supplier:             "SUP-001",
+					SupplierName:         "Abdulloh",
+					SupplierDeliveryNote: "TG:+998900000000|64",
+					ItemCode:             "ITEM-001",
+					ItemName:             "Chers001",
+					Qty:                  64,
+					UOM:                  "Nos",
+					PostingDate:          "2026-03-13",
+				},
+			},
+		},
+		"http://localhost:8000",
+		"key",
+		"secret",
+		"Stores - CH",
+		"10",
+		"20",
+		"20WERKA0001",
+		"+998901111111",
+		"Werka",
+		nil,
+		nil,
+	))
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleWerka,
+		DisplayName: "Werka",
+		Ref:         "werka",
+	})
+	if err != nil {
+		t.Fatalf("failed to create werka session: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/mobile/werka/history", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	var items []DispatchRecord
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 deduped receipt, got %d", len(items))
+	}
+}

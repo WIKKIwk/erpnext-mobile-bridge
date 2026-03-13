@@ -314,6 +314,7 @@ func (a *ERPAuthenticator) SupplierHistory(ctx context.Context, principal Princi
 	if err != nil {
 		return nil, err
 	}
+	items = uniquePurchaseReceiptsByName(items)
 
 	commentsByReceipt, err := a.purchaseReceiptCommentsByName(ctx, items, 100)
 	if err != nil {
@@ -359,6 +360,74 @@ func (a *ERPAuthenticator) SupplierSummary(ctx context.Context, principal Princi
 		}
 	}
 	return summary, nil
+}
+
+func (a *ERPAuthenticator) SupplierStatusBreakdown(ctx context.Context, principal Principal, kind string) ([]SupplierStatusBreakdownEntry, error) {
+	items, err := a.collectSupplierPurchaseReceipts(ctx, principal.Ref)
+	if err != nil {
+		return nil, err
+	}
+
+	grouped := make(map[string]*SupplierStatusBreakdownEntry)
+	for _, item := range items {
+		record := mapPurchaseReceiptToDispatchRecord(item, principal.DisplayName)
+		if !recordMatchesSupplierBreakdown(record, kind) {
+			continue
+		}
+		key := strings.TrimSpace(record.ItemCode)
+		if key == "" {
+			key = strings.TrimSpace(record.ItemName)
+		}
+		entry := grouped[key]
+		if entry == nil {
+			entry = &SupplierStatusBreakdownEntry{
+				ItemCode: record.ItemCode,
+				ItemName: record.ItemName,
+				UOM:      record.UOM,
+			}
+			grouped[key] = entry
+		}
+		entry.ReceiptCount++
+		entry.TotalSentQty += record.SentQty
+		entry.TotalAcceptedQty += record.AcceptedQty
+		entry.TotalReturnedQty += maxFloat(record.SentQty-record.AcceptedQty, 0)
+		if entry.UOM == "" {
+			entry.UOM = record.UOM
+		}
+	}
+
+	result := make([]SupplierStatusBreakdownEntry, 0, len(grouped))
+	for _, entry := range grouped {
+		result = append(result, *entry)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].ReceiptCount != result[j].ReceiptCount {
+			return result[i].ReceiptCount > result[j].ReceiptCount
+		}
+		return strings.ToLower(result[i].ItemName) < strings.ToLower(result[j].ItemName)
+	})
+	return result, nil
+}
+
+func (a *ERPAuthenticator) SupplierStatusDetails(ctx context.Context, principal Principal, kind, itemCode string) ([]DispatchRecord, error) {
+	items, err := a.collectSupplierPurchaseReceipts(ctx, principal.Ref)
+	if err != nil {
+		return nil, err
+	}
+
+	needle := strings.TrimSpace(itemCode)
+	result := make([]DispatchRecord, 0, len(items))
+	for _, item := range items {
+		record := mapPurchaseReceiptToDispatchRecord(item, principal.DisplayName)
+		if !recordMatchesSupplierBreakdown(record, kind) {
+			continue
+		}
+		if needle != "" && !strings.EqualFold(strings.TrimSpace(record.ItemCode), needle) {
+			continue
+		}
+		result = append(result, record)
+	}
+	return result, nil
 }
 
 func (a *ERPAuthenticator) WerkaPending(ctx context.Context, limit int) ([]DispatchRecord, error) {
@@ -494,6 +563,7 @@ func (a *ERPAuthenticator) WerkaHistory(ctx context.Context, limit int) ([]Dispa
 	if err != nil {
 		return nil, err
 	}
+	items = uniquePurchaseReceiptsByName(items)
 
 	commentsByReceipt, err := a.purchaseReceiptCommentsByName(ctx, items, 100)
 	if err != nil {
@@ -532,6 +602,26 @@ func (a *ERPAuthenticator) WerkaHistory(ctx context.Context, limit int) ([]Dispa
 	return result, nil
 }
 
+func uniquePurchaseReceiptsByName(items []erpnext.PurchaseReceiptDraft) []erpnext.PurchaseReceiptDraft {
+	if len(items) < 2 {
+		return items
+	}
+	seen := make(map[string]struct{}, len(items))
+	result := make([]erpnext.PurchaseReceiptDraft, 0, len(items))
+	for _, item := range items {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		result = append(result, item)
+	}
+	return result
+}
+
 func (a *ERPAuthenticator) purchaseReceiptCommentsByName(ctx context.Context, items []erpnext.PurchaseReceiptDraft, limit int) (map[string][]erpnext.Comment, error) {
 	if len(items) == 0 {
 		return map[string][]erpnext.Comment{}, nil
@@ -564,12 +654,23 @@ func (a *ERPAuthenticator) purchaseReceiptCommentsByName(ctx context.Context, it
 func (a *ERPAuthenticator) collectSupplierPurchaseReceipts(ctx context.Context, supplierRef string) ([]erpnext.PurchaseReceiptDraft, error) {
 	const pageSize = 200
 	result := make([]erpnext.PurchaseReceiptDraft, 0, pageSize)
+	seen := make(map[string]struct{}, pageSize)
 	for offset := 0; ; offset += pageSize {
 		items, err := a.erp.ListSupplierPurchaseReceiptsPage(ctx, a.baseURL, a.apiKey, a.apiSecret, supplierRef, pageSize, offset)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, items...)
+		for _, item := range items {
+			name := strings.TrimSpace(item.Name)
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			result = append(result, item)
+		}
 		if len(items) < pageSize {
 			return result, nil
 		}
@@ -579,12 +680,23 @@ func (a *ERPAuthenticator) collectSupplierPurchaseReceipts(ctx context.Context, 
 func (a *ERPAuthenticator) collectTelegramPurchaseReceipts(ctx context.Context) ([]erpnext.PurchaseReceiptDraft, error) {
 	const pageSize = 200
 	result := make([]erpnext.PurchaseReceiptDraft, 0, pageSize)
+	seen := make(map[string]struct{}, pageSize)
 	for offset := 0; ; offset += pageSize {
 		items, err := a.erp.ListTelegramPurchaseReceiptsPage(ctx, a.baseURL, a.apiKey, a.apiSecret, pageSize, offset)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, items...)
+		for _, item := range items {
+			name := strings.TrimSpace(item.Name)
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			result = append(result, item)
+		}
 		if len(items) < pageSize {
 			return result, nil
 		}
@@ -604,6 +716,19 @@ func recordMatchesWerkaBreakdown(record DispatchRecord, kind string) bool {
 	case "pending":
 		return record.Status == "pending" || record.Status == "draft"
 	case "confirmed":
+		return record.Status == "accepted"
+	case "returned":
+		return record.Status == "partial" || record.Status == "rejected" || record.Status == "cancelled"
+	default:
+		return false
+	}
+}
+
+func recordMatchesSupplierBreakdown(record DispatchRecord, kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case "pending":
+		return record.Status == "pending" || record.Status == "draft"
+	case "submitted":
 		return record.Status == "accepted"
 	case "returned":
 		return record.Status == "partial" || record.Status == "rejected" || record.Status == "cancelled"
