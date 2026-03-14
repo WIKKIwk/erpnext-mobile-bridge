@@ -1757,12 +1757,29 @@ func TestServerWerkaAndAdminHistoryIncludeCustomerConfirmedResult(t *testing.T) 
 					Status:       "Submitted",
 					DocStatus:    1,
 				},
+				{
+					Name:         "MAT-DN-0012",
+					Customer:     "CUST-001",
+					CustomerName: "Comfi",
+					ItemCode:     "ITEM-002",
+					ItemName:     "Reject",
+					Qty:          2,
+					UOM:          "Nos",
+					PostingDate:  "2026-03-14",
+					Status:       "Draft",
+					DocStatus:    0,
+				},
 			},
 			comments: map[string][]erpnext.Comment{
 				"MAT-DN-0011": {{
 					ID:        "COMMENT-11",
 					Content:   erpnext.UpsertCustomerDecisionInRemarks("", "confirmed", ""),
 					CreatedAt: "2026-03-14 10:10:00",
+				}},
+				"MAT-DN-0012": {{
+					ID:        "COMMENT-12",
+					Content:   erpnext.UpsertCustomerDecisionInRemarks("", "rejected", "Qabul qilinmadi"),
+					CreatedAt: "2026-03-14 10:12:00",
 				}},
 			},
 		},
@@ -1798,11 +1815,22 @@ func TestServerWerkaAndAdminHistoryIncludeCustomerConfirmedResult(t *testing.T) 
 	if err := json.NewDecoder(werkaResp.Body).Decode(&werkaRecords); err != nil {
 		t.Fatalf("decode werka history failed: %v", err)
 	}
-	if len(werkaRecords) != 1 {
-		t.Fatalf("expected 1 werka record, got %d", len(werkaRecords))
+	if len(werkaRecords) != 2 {
+		t.Fatalf("expected 2 werka records, got %d", len(werkaRecords))
 	}
-	if werkaRecords[0].EventType != "customer_delivery_confirmed" {
-		t.Fatalf("unexpected werka event type: %+v", werkaRecords[0])
+	seenWerka := map[string]DispatchRecord{}
+	for _, record := range werkaRecords {
+		seenWerka[record.EventType] = record
+	}
+	if _, ok := seenWerka["customer_delivery_confirmed"]; !ok {
+		t.Fatalf("missing confirmed werka event: %+v", werkaRecords)
+	}
+	rejectWerka, ok := seenWerka["customer_delivery_rejected"]
+	if !ok {
+		t.Fatalf("missing rejected werka event: %+v", werkaRecords)
+	}
+	if rejectWerka.Note != "Customer rad etdi. Sabab: Qabul qilinmadi" {
+		t.Fatalf("unexpected reject note: %+v", rejectWerka)
 	}
 
 	adminToken, err := server.sessions.Create(Principal{
@@ -1824,10 +1852,17 @@ func TestServerWerkaAndAdminHistoryIncludeCustomerConfirmedResult(t *testing.T) 
 	if err := json.NewDecoder(adminResp.Body).Decode(&adminRecords); err != nil {
 		t.Fatalf("decode admin activity failed: %v", err)
 	}
-	if len(adminRecords) != 1 {
-		t.Fatalf("expected 1 admin record, got %d", len(adminRecords))
+	if len(adminRecords) != 2 {
+		t.Fatalf("expected 2 admin records, got %d", len(adminRecords))
 	}
-	if adminRecords[0].EventType != "customer_delivery_confirmed" {
-		t.Fatalf("unexpected admin event type: %+v", adminRecords[0])
+	seenAdmin := map[string]DispatchRecord{}
+	for _, record := range adminRecords {
+		seenAdmin[record.EventType] = record
+	}
+	if _, ok := seenAdmin["customer_delivery_confirmed"]; !ok {
+		t.Fatalf("missing confirmed admin event: %+v", adminRecords)
+	}
+	if _, ok := seenAdmin["customer_delivery_rejected"]; !ok {
+		t.Fatalf("missing rejected admin event: %+v", adminRecords)
 	}
 }

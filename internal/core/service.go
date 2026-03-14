@@ -667,7 +667,7 @@ func (a *ERPAuthenticator) WerkaHistory(ctx context.Context, limit int) ([]Dispa
 		}
 	}
 
-	customerResultEvents, err := a.customerConfirmedDeliveryEvents(ctx)
+	customerResultEvents, err := a.customerResultEvents(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -679,7 +679,7 @@ func (a *ERPAuthenticator) WerkaHistory(ctx context.Context, limit int) ([]Dispa
 	return result, nil
 }
 
-func (a *ERPAuthenticator) customerConfirmedDeliveryEvents(ctx context.Context) ([]DispatchRecord, error) {
+func (a *ERPAuthenticator) customerResultEvents(ctx context.Context) ([]DispatchRecord, error) {
 	customers, err := a.erp.SearchCustomers(ctx, a.baseURL, a.apiKey, a.apiSecret, "", 500)
 	if err != nil {
 		return nil, err
@@ -700,7 +700,7 @@ func (a *ERPAuthenticator) customerConfirmedDeliveryEvents(ctx context.Context) 
 		}
 		for _, item := range deliveryNotes {
 			record, ok := buildCustomerDeliveryResultEvent(item, commentsByName[item.Name])
-			if !ok || record.EventType != "customer_delivery_confirmed" {
+			if !ok {
 				continue
 			}
 			result = append(result, record)
