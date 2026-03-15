@@ -242,6 +242,47 @@ func (c *Client) ListCustomerItems(ctx context.Context, baseURL, apiKey, apiSecr
 	return items, nil
 }
 
+func (c *Client) AssignCustomerToItem(ctx context.Context, baseURL, apiKey, apiSecret, itemCode, customerRef string) error {
+	normalized, err := normalizeBaseURL(baseURL)
+	if err != nil {
+		return err
+	}
+	customer, err := c.GetCustomer(ctx, normalized, apiKey, apiSecret, customerRef)
+	if err != nil {
+		return err
+	}
+	customerLink := strings.TrimSpace(customer.ID)
+	if customerLink == "" {
+		return fmt.Errorf("customer not found")
+	}
+
+	endpoint := normalized + "/api/resource/Item/" + url.PathEscape(strings.TrimSpace(itemCode))
+	var payload struct {
+		Data struct {
+			CustomerItems []struct {
+				CustomerName string `json:"customer_name"`
+			} `json:"customer_items"`
+		} `json:"data"`
+	}
+	if err := c.doJSON(ctx, endpoint, apiKey, apiSecret, &payload); err != nil {
+		return err
+	}
+	for _, row := range payload.Data.CustomerItems {
+		if strings.EqualFold(strings.TrimSpace(row.CustomerName), customerLink) {
+			return nil
+		}
+	}
+
+	createEndpoint := normalized + "/api/resource/Item%20Customer%20Detail"
+	return c.doJSONRequest(ctx, http.MethodPost, createEndpoint, apiKey, apiSecret, map[string]interface{}{
+		"parent":        strings.TrimSpace(itemCode),
+		"parenttype":    "Item",
+		"parentfield":   "customer_items",
+		"customer_name": customerLink,
+		"ref_code":      customerLink,
+	}, nil)
+}
+
 func (c *Client) itemMatchesCustomer(ctx context.Context, normalized, apiKey, apiSecret, itemCode string, customerKeys map[string]struct{}) (bool, Item, error) {
 	endpoint := normalized + "/api/resource/Item/" + url.PathEscape(strings.TrimSpace(itemCode))
 	var payload struct {

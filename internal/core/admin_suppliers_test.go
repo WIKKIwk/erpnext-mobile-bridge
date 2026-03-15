@@ -140,6 +140,10 @@ func (s *adminSuppliersERPStub) RemoveSupplierFromItem(ctx context.Context, base
 	return nil
 }
 
+func (s *adminSuppliersERPStub) AssignCustomerToItem(ctx context.Context, baseURL, apiKey, apiSecret, itemCode, customerRef string) error {
+	return nil
+}
+
 func (s *adminSuppliersERPStub) ListPendingPurchaseReceipts(ctx context.Context, baseURL, apiKey, apiSecret string, limit int) ([]erpnext.PurchaseReceiptDraft, error) {
 	return nil, nil
 }

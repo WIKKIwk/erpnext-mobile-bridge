@@ -20,6 +20,7 @@ type fakeERPClient struct {
 	suppliers             []erpnext.Supplier
 	items                 []erpnext.Item
 	supplierItems         map[string]map[string]bool
+	customerItems         map[string]map[string]bool
 	uploadedAvatarURL     string
 	comments              map[string][]erpnext.Comment
 	pendingReceipts       []erpnext.PurchaseReceiptDraft
@@ -217,6 +218,17 @@ func (f *fakeERPClient) RemoveSupplierFromItem(_ context.Context, _, _, _, itemC
 		return nil
 	}
 	delete(f.supplierItems[supplier], itemCode)
+	return nil
+}
+
+func (f *fakeERPClient) AssignCustomerToItem(_ context.Context, _, _, _, itemCode, customerRef string) error {
+	if f.customerItems == nil {
+		f.customerItems = map[string]map[string]bool{}
+	}
+	if f.customerItems[customerRef] == nil {
+		f.customerItems[customerRef] = map[string]bool{}
+	}
+	f.customerItems[customerRef][itemCode] = true
 	return nil
 }
 

@@ -196,6 +196,24 @@ func (a *ERPAuthenticator) AdminUnassignSupplierItem(ctx context.Context, ref, i
 	return a.AdminSupplierDetail(ctx, item.ID)
 }
 
+func (a *ERPAuthenticator) AdminAssignCustomerItem(ctx context.Context, ref, itemCode string) (AdminCustomerDetail, error) {
+	item, err := a.erp.GetCustomer(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(ref))
+	if err != nil {
+		return AdminCustomerDetail{}, err
+	}
+	state, err := a.adminSupplierState(item.ID)
+	if err != nil {
+		return AdminCustomerDetail{}, err
+	}
+	if state.Removed {
+		return AdminCustomerDetail{}, ErrAdminSupplierNotFound
+	}
+	if err := a.erp.AssignCustomerToItem(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(itemCode), item.ID); err != nil {
+		return AdminCustomerDetail{}, err
+	}
+	return a.AdminCustomerDetail(ctx, item.ID)
+}
+
 func (a *ERPAuthenticator) AdminCreateItem(ctx context.Context, code, name, uom string) (SupplierItem, error) {
 	item, err := a.erp.CreateItem(ctx, a.baseURL, a.apiKey, a.apiSecret, erpnext.CreateItemInput{
 		Code: strings.TrimSpace(code),
