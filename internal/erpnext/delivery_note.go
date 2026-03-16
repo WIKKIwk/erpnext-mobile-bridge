@@ -14,6 +14,10 @@ const (
 	accordCustomerDecisionReasonPrefix = "Accord Customer Sabab:"
 	accordDeliveryLifecyclePrefix      = "Accord Delivery Lifecycle:"
 	accordDeliveryActorPrefix          = "Accord Delivery Actor:"
+	compactCustomerDecisionPrefix      = "AC:"
+	compactCustomerReasonPrefix        = "AR:"
+	compactDeliveryLifecyclePrefix     = "AD:"
+	compactDeliveryActorPrefix         = "AA:"
 )
 
 func (c *Client) SearchCompanies(ctx context.Context, baseURL, apiKey, apiSecret string, limit int) ([]Company, error) {
@@ -344,16 +348,18 @@ func UpsertCustomerDecisionInRemarks(existingNote, state, reason string) string 
 			continue
 		}
 		if strings.HasPrefix(trimmed, accordCustomerDecisionPrefix) ||
-			strings.HasPrefix(trimmed, accordCustomerDecisionReasonPrefix) {
+			strings.HasPrefix(trimmed, accordCustomerDecisionReasonPrefix) ||
+			strings.HasPrefix(trimmed, compactCustomerDecisionPrefix) ||
+			strings.HasPrefix(trimmed, compactCustomerReasonPrefix) {
 			continue
 		}
 		filtered = append(filtered, trimmed)
 	}
-	if strings.TrimSpace(state) != "" {
-		filtered = append(filtered, accordCustomerDecisionPrefix+" "+strings.TrimSpace(state))
+	if normalized := normalizeCustomerDecisionState(state); normalized != "" {
+		filtered = append(filtered, compactCustomerDecisionPrefix+normalized)
 	}
 	if strings.TrimSpace(reason) != "" {
-		filtered = append(filtered, accordCustomerDecisionReasonPrefix+" "+strings.TrimSpace(reason))
+		filtered = append(filtered, compactCustomerReasonPrefix+strings.TrimSpace(reason))
 	}
 	return strings.Join(filtered, "\n")
 }
@@ -363,7 +369,10 @@ func ExtractCustomerDecisionState(remarks string) string {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, accordCustomerDecisionPrefix) {
-			return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(trimmed, accordCustomerDecisionPrefix)))
+			return normalizeCustomerDecisionState(strings.TrimSpace(strings.TrimPrefix(trimmed, accordCustomerDecisionPrefix)))
+		}
+		if strings.HasPrefix(trimmed, compactCustomerDecisionPrefix) {
+			return normalizeCustomerDecisionState(strings.TrimSpace(strings.TrimPrefix(trimmed, compactCustomerDecisionPrefix)))
 		}
 	}
 	return ""
@@ -376,17 +385,20 @@ func ExtractCustomerDecisionReason(remarks string) string {
 		if strings.HasPrefix(trimmed, accordCustomerDecisionReasonPrefix) {
 			return strings.TrimSpace(strings.TrimPrefix(trimmed, accordCustomerDecisionReasonPrefix))
 		}
+		if strings.HasPrefix(trimmed, compactCustomerReasonPrefix) {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, compactCustomerReasonPrefix))
+		}
 	}
 	return ""
 }
 
 func BuildDeliveryLifecycleComment(state, actor string) string {
 	lines := make([]string, 0, 2)
-	if strings.TrimSpace(state) != "" {
-		lines = append(lines, accordDeliveryLifecyclePrefix+" "+strings.TrimSpace(state))
+	if normalized := normalizeDeliveryLifecycleState(state); normalized != "" {
+		lines = append(lines, compactDeliveryLifecyclePrefix+normalized)
 	}
 	if strings.TrimSpace(actor) != "" {
-		lines = append(lines, accordDeliveryActorPrefix+" "+strings.TrimSpace(actor))
+		lines = append(lines, compactDeliveryActorPrefix+normalizeDeliveryActor(actor))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -396,8 +408,46 @@ func ExtractDeliveryLifecycleState(remarks string) string {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, accordDeliveryLifecyclePrefix) {
-			return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(trimmed, accordDeliveryLifecyclePrefix)))
+			return normalizeDeliveryLifecycleState(strings.TrimSpace(strings.TrimPrefix(trimmed, accordDeliveryLifecyclePrefix)))
+		}
+		if strings.HasPrefix(trimmed, compactDeliveryLifecyclePrefix) {
+			return normalizeDeliveryLifecycleState(strings.TrimSpace(strings.TrimPrefix(trimmed, compactDeliveryLifecyclePrefix)))
 		}
 	}
 	return ""
+}
+
+func normalizeCustomerDecisionState(state string) string {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "pending", "pd":
+		return "pending"
+	case "confirmed", "accepted", "cf":
+		return "confirmed"
+	case "rejected", "rj":
+		return "rejected"
+	default:
+		return ""
+	}
+}
+
+func normalizeDeliveryLifecycleState(state string) string {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "submitted", "sb":
+		return "submitted"
+	default:
+		return ""
+	}
+}
+
+func normalizeDeliveryActor(actor string) string {
+	switch strings.ToLower(strings.TrimSpace(actor)) {
+	case "werka", "wk":
+		return "wk"
+	case "customer", "cu":
+		return "cu"
+	case "admin", "ad":
+		return "ad"
+	default:
+		return strings.ToLower(strings.TrimSpace(actor))
+	}
 }
