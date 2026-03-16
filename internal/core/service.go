@@ -899,6 +899,73 @@ func (a *ERPAuthenticator) NotificationDetail(ctx context.Context, principal Pri
 			trimmedReceiptID = strings.TrimSpace(parts[0])
 		}
 	}
+	if strings.HasPrefix(trimmedReceiptID, customerDeliveryResultEventPrefix) {
+		parts := strings.SplitN(
+			strings.TrimPrefix(trimmedReceiptID, customerDeliveryResultEventPrefix),
+			":",
+			2,
+		)
+		deliveryNoteID := ""
+		commentID := ""
+		if len(parts) > 0 {
+			deliveryNoteID = strings.TrimSpace(parts[0])
+		}
+		if len(parts) > 1 {
+			commentID = strings.TrimSpace(parts[1])
+		}
+		if deliveryNoteID == "" {
+			return NotificationDetail{}, fmt.Errorf("delivery note id is required")
+		}
+
+		draft, err := a.erp.GetDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, deliveryNoteID)
+		if err != nil {
+			return NotificationDetail{}, err
+		}
+		if principal.Role == RoleCustomer &&
+			strings.TrimSpace(draft.Customer) != strings.TrimSpace(principal.Ref) {
+			return NotificationDetail{}, ErrUnauthorized
+		}
+
+		comments, err := a.erp.ListDeliveryNoteComments(
+			ctx,
+			a.baseURL,
+			a.apiKey,
+			a.apiSecret,
+			draft.Name,
+			100,
+		)
+		if err != nil {
+			return NotificationDetail{}, err
+		}
+
+		record, ok := buildCustomerDeliveryResultEvent(draft, comments)
+		if !ok {
+			record = mapDeliveryNoteToDispatchRecord(draft, comments)
+			record.ID = strings.TrimSpace(receiptID)
+		}
+		if commentID != "" {
+			record.ID = customerDeliveryResultEventPrefix + strings.TrimSpace(draft.Name) + ":" + commentID
+		}
+
+		result := make([]NotificationComment, 0, len(comments))
+		for _, item := range comments {
+			authorLabel, body := parseNotificationComment(item.Content)
+			if body == "" {
+				continue
+			}
+			result = append(result, NotificationComment{
+				ID:           item.ID,
+				AuthorLabel:  authorLabel,
+				Body:         body,
+				CreatedLabel: item.CreatedAt,
+			})
+		}
+
+		return NotificationDetail{
+			Record:   record,
+			Comments: result,
+		}, nil
+	}
 
 	draft, err := a.erp.GetPurchaseReceipt(ctx, a.baseURL, a.apiKey, a.apiSecret, trimmedReceiptID)
 	if err != nil {

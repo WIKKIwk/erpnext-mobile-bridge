@@ -12,6 +12,8 @@ import (
 type adminSuppliersERPStub struct {
 	searchSuppliers           func(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Supplier, error)
 	getSupplier               func(ctx context.Context, baseURL, apiKey, apiSecret, id string) (erpnext.Supplier, error)
+	getDeliveryNote           func(ctx context.Context, baseURL, apiKey, apiSecret, name string) (erpnext.DeliveryNoteDraft, error)
+	listDeliveryNoteComments  func(ctx context.Context, baseURL, apiKey, apiSecret, name string, limit int) ([]erpnext.Comment, error)
 	listAssignedSupplierItems func(ctx context.Context, baseURL, apiKey, apiSecret, supplier string, limit int) ([]erpnext.Item, error)
 	getItemsByCodes           func(ctx context.Context, baseURL, apiKey, apiSecret string, itemCodes []string) ([]erpnext.Item, error)
 	searchWarehouses          func(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Warehouse, error)
@@ -114,10 +116,16 @@ func (s *adminSuppliersERPStub) ListCustomerDeliveryNotesPage(ctx context.Contex
 }
 
 func (s *adminSuppliersERPStub) GetDeliveryNote(ctx context.Context, baseURL, apiKey, apiSecret, name string) (erpnext.DeliveryNoteDraft, error) {
+	if s.getDeliveryNote != nil {
+		return s.getDeliveryNote(ctx, baseURL, apiKey, apiSecret, name)
+	}
 	return erpnext.DeliveryNoteDraft{}, nil
 }
 
 func (s *adminSuppliersERPStub) ListDeliveryNoteComments(ctx context.Context, baseURL, apiKey, apiSecret, name string, limit int) ([]erpnext.Comment, error) {
+	if s.listDeliveryNoteComments != nil {
+		return s.listDeliveryNoteComments(ctx, baseURL, apiKey, apiSecret, name, limit)
+	}
 	return nil, nil
 }
 
@@ -278,6 +286,62 @@ func TestAdminSupplierDetailFallsBackWhenItemSupplierPermissionDenied(t *testing
 	}
 	if detail.AssignedItems[0].Code != "ITEM-001" {
 		t.Fatalf("expected ITEM-001, got %q", detail.AssignedItems[0].Code)
+	}
+}
+
+func TestNotificationDetailSupportsCustomerDeliveryResultEvents(t *testing.T) {
+	stub := &adminSuppliersERPStub{
+		getDeliveryNote: func(ctx context.Context, baseURL, apiKey, apiSecret, name string) (erpnext.DeliveryNoteDraft, error) {
+			return erpnext.DeliveryNoteDraft{
+				Name:         "MAT-DN-0001",
+				Customer:     "CUST-001",
+				CustomerName: "Comfi",
+				ItemCode:     "ITEM-001",
+				ItemName:     "Chers",
+				Qty:          3,
+				UOM:          "Nos",
+				PostingDate:  "2026-03-15",
+			}, nil
+		},
+		listDeliveryNoteComments: func(ctx context.Context, baseURL, apiKey, apiSecret, name string, limit int) ([]erpnext.Comment, error) {
+			return []erpnext.Comment{
+				{
+					ID:        "COMMENT-1",
+					Content:   erpnext.UpsertCustomerDecisionInRemarks("", "confirmed", ""),
+					CreatedAt: "2026-03-15 10:00:00",
+				},
+			}, nil
+		},
+	}
+
+	auth := NewERPAuthenticator(
+		stub,
+		"http://erp.test",
+		"key",
+		"secret",
+		"Main - A",
+		"10",
+		"20",
+		"",
+		"",
+		"",
+		nil,
+		nil,
+	)
+
+	detail, err := auth.NotificationDetail(
+		context.Background(),
+		Principal{Role: RoleWerka, Ref: "werka"},
+		customerDeliveryResultEventPrefix+"MAT-DN-0001:COMMENT-1",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if detail.Record.EventType != "customer_delivery_confirmed" {
+		t.Fatalf("unexpected event type: %q", detail.Record.EventType)
+	}
+	if detail.Record.ID != customerDeliveryResultEventPrefix+"MAT-DN-0001:COMMENT-1" {
+		t.Fatalf("unexpected record id: %q", detail.Record.ID)
 	}
 }
 
