@@ -1125,7 +1125,7 @@ func (a *ERPAuthenticator) CreateWerkaCustomerIssue(ctx context.Context, princip
 	if err != nil {
 		return WerkaCustomerIssueRecord{}, err
 	}
-	result, err := a.erp.CreateDraftDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, erpnext.CreateDeliveryNoteInput{
+	result, err := a.erp.CreateAndSubmitDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, erpnext.CreateDeliveryNoteInput{
 		Customer:  customer.ID,
 		Company:   company,
 		Warehouse: warehouse,
@@ -1367,9 +1367,6 @@ func (a *ERPAuthenticator) CustomerRespondDelivery(ctx context.Context, principa
 		); err != nil {
 			return CustomerDeliveryDetail{}, err
 		}
-		_ = a.erp.SubmitDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, draft.Name)
-		draft.DocStatus = 1
-		draft.Status = "Submitted"
 		comments = append(comments, erpnext.Comment{
 			ID:        "customer-local-confirmed",
 			Content:   commentBody,
@@ -1409,7 +1406,7 @@ func customerDeliveryStatus(item erpnext.DeliveryNoteDraft, comments []erpnext.C
 	switch {
 	case state == "rejected":
 		return "rejected"
-	case item.DocStatus == 1 || state == "confirmed":
+	case state == "confirmed":
 		return "accepted"
 	default:
 		return "pending"
