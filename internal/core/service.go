@@ -1350,6 +1350,12 @@ func (a *ERPAuthenticator) CustomerRespondDelivery(ctx context.Context, principa
 		return CustomerDeliveryDetail{}, fmt.Errorf("delivery note is not pending")
 	}
 
+	decisionState := "rejected"
+	if approve {
+		decisionState = "confirmed"
+	}
+	commentBody := erpnext.UpsertCustomerDecisionInRemarks("", decisionState, reason)
+
 	if approve {
 		if err := a.erp.AddDeliveryNoteComment(
 			ctx,
@@ -1357,14 +1363,23 @@ func (a *ERPAuthenticator) CustomerRespondDelivery(ctx context.Context, principa
 			a.apiKey,
 			a.apiSecret,
 			draft.Name,
-			erpnext.UpsertCustomerDecisionInRemarks("", "confirmed", ""),
+			commentBody,
 		); err != nil {
 			return CustomerDeliveryDetail{}, err
 		}
-		if err := a.erp.SubmitDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, draft.Name); err != nil {
-			return CustomerDeliveryDetail{}, err
-		}
-		return a.CustomerDeliveryDetail(ctx, principal, draft.Name)
+		_ = a.erp.SubmitDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, draft.Name)
+		draft.DocStatus = 1
+		draft.Status = "Submitted"
+		comments = append(comments, erpnext.Comment{
+			ID:        "customer-local-confirmed",
+			Content:   commentBody,
+			CreatedAt: time.Now().UTC().Format("2006-01-02 15:04:05"),
+		})
+		return CustomerDeliveryDetail{
+			Record:     mapDeliveryNoteToDispatchRecord(draft, comments),
+			CanApprove: false,
+			CanReject:  false,
+		}, nil
 	}
 
 	if err := a.erp.AddDeliveryNoteComment(
@@ -1373,11 +1388,20 @@ func (a *ERPAuthenticator) CustomerRespondDelivery(ctx context.Context, principa
 		a.apiKey,
 		a.apiSecret,
 		draft.Name,
-		erpnext.UpsertCustomerDecisionInRemarks("", "rejected", reason),
+		commentBody,
 	); err != nil {
 		return CustomerDeliveryDetail{}, err
 	}
-	return a.CustomerDeliveryDetail(ctx, principal, draft.Name)
+	comments = append(comments, erpnext.Comment{
+		ID:        "customer-local-rejected",
+		Content:   commentBody,
+		CreatedAt: time.Now().UTC().Format("2006-01-02 15:04:05"),
+	})
+	return CustomerDeliveryDetail{
+		Record:     mapDeliveryNoteToDispatchRecord(draft, comments),
+		CanApprove: false,
+		CanReject:  false,
+	}, nil
 }
 
 func customerDeliveryStatus(item erpnext.DeliveryNoteDraft, comments []erpnext.Comment) string {

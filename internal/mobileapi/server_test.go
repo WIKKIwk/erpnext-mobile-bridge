@@ -29,6 +29,7 @@ type fakeERPClient struct {
 	customerDeliveryNotes []erpnext.DeliveryNoteDraft
 	batchCommentKeys      [][]string
 	updateRemarksErr      error
+	submitDeliveryNoteErr error
 	lastSupplierLimit     int
 	lastSupplierOffset    int
 	lastTelegramLimit     int
@@ -408,6 +409,9 @@ func (f *fakeERPClient) CreateDraftDeliveryNote(_ context.Context, _, _, _ strin
 }
 
 func (f *fakeERPClient) SubmitDeliveryNote(_ context.Context, _, _, _, name string) error {
+	if f.submitDeliveryNoteErr != nil {
+		return f.submitDeliveryNoteErr
+	}
 	for index, item := range f.customerDeliveryNotes {
 		if item.Name == name {
 			item.DocStatus = 1
@@ -1923,5 +1927,73 @@ func TestServerWerkaAndAdminHistoryIncludeCustomerConfirmedResult(t *testing.T) 
 	}
 	if _, ok := seenAdmin["customer_delivery_rejected"]; !ok {
 		t.Fatalf("missing rejected admin event: %+v", adminRecords)
+	}
+}
+
+func TestServerCustomerRespondApproveReturnsDetailEvenIfSubmitFails(t *testing.T) {
+	server := NewServer(NewERPAuthenticator(
+		&fakeERPClient{
+			customerDeliveryNotes: []erpnext.DeliveryNoteDraft{
+				{
+					Name:         "MAT-DN-0010",
+					Customer:     "CUST-001",
+					CustomerName: "Comfi",
+					ItemCode:     "pista93784",
+					ItemName:     "pista",
+					Qty:          12,
+					UOM:          "Kg",
+					PostingDate:  "2026-03-16",
+					Status:       "Draft",
+					DocStatus:    0,
+				},
+			},
+			comments: map[string][]erpnext.Comment{},
+			submitDeliveryNoteErr: fmt.Errorf("submit failed after comment"),
+		},
+		"http://erp.local",
+		"key",
+		"secret",
+		"Stores - A",
+		"10",
+		"20",
+		"200000000000",
+		"+998900000000",
+		"Werka",
+		NewProfileStore(t.TempDir()+"/profile_prefs.json"),
+		NewAdminSupplierStore(t.TempDir()+"/admin_suppliers.json"),
+	))
+	server.sender = &recordingPushSender{}
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleCustomer,
+		DisplayName: "Comfi",
+		Ref:         "CUST-001",
+		Phone:       "+998901000333",
+	})
+	if err != nil {
+		t.Fatalf("failed to create customer session: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/mobile/customer/respond",
+		strings.NewReader(`{"delivery_note_id":"MAT-DN-0010","approve":true}`),
+	)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected respond status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	var updated CustomerDeliveryDetail
+	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
+		t.Fatalf("decode respond failed: %v", err)
+	}
+	if updated.Record.Status != "accepted" {
+		t.Fatalf("expected accepted status, got %+v", updated.Record)
+	}
+	if updated.CanApprove || updated.CanReject {
+		t.Fatalf("expected actions disabled after confirm, got %+v", updated)
 	}
 }
