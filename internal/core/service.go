@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -98,6 +99,7 @@ type ERPAuthenticator struct {
 	apiKey            string
 	apiSecret         string
 	defaultWarehouse  string
+	defaultUOM        string
 	supplierPrefix    string
 	werkaPrefix       string
 	werkaCode         string
@@ -158,6 +160,10 @@ func NewERPAuthenticator(
 	if strings.TrimSpace(werkaName) == "" {
 		werkaName = "Werka"
 	}
+	defaultUOM := strings.TrimSpace(os.Getenv("ERP_DEFAULT_UOM"))
+	if defaultUOM == "" {
+		defaultUOM = "Kg"
+	}
 
 	return &ERPAuthenticator{
 		erp:              erp,
@@ -165,6 +171,7 @@ func NewERPAuthenticator(
 		apiKey:           strings.TrimSpace(apiKey),
 		apiSecret:        strings.TrimSpace(apiSecret),
 		defaultWarehouse: strings.TrimSpace(defaultWarehouse),
+		defaultUOM:       defaultUOM,
 		supplierPrefix:   strings.TrimSpace(supplierPrefix),
 		werkaPrefix:      strings.TrimSpace(werkaPrefix),
 		werkaCode:        strings.TrimSpace(werkaCode),
@@ -1659,12 +1666,16 @@ func (a *ERPAuthenticator) ConfirmReceipt(ctx context.Context, receiptID string,
 
 func (a *ERPAuthenticator) AdminSettings() AdminSettings {
 	werkaState, _ := a.adminSupplierState(werkaStateRef)
+	defaultUOM := strings.TrimSpace(a.defaultUOM)
+	if defaultUOM == "" {
+		defaultUOM = "Kg"
+	}
 	return AdminSettings{
 		ERPURL:                 a.baseURL,
 		ERPAPIKey:              a.apiKey,
 		ERPAPISecret:           a.apiSecret,
 		DefaultTargetWarehouse: a.defaultWarehouse,
-		DefaultUOM:             "Kg",
+		DefaultUOM:             defaultUOM,
 		WerkaPhone:             a.werkaPhone,
 		WerkaName:              a.werkaName,
 		WerkaCode:              a.werkaCode,
@@ -1680,6 +1691,10 @@ func (a *ERPAuthenticator) UpdateAdminSettings(input AdminSettings) error {
 	a.apiKey = strings.TrimSpace(input.ERPAPIKey)
 	a.apiSecret = strings.TrimSpace(input.ERPAPISecret)
 	a.defaultWarehouse = strings.TrimSpace(input.DefaultTargetWarehouse)
+	a.defaultUOM = strings.TrimSpace(input.DefaultUOM)
+	if a.defaultUOM == "" {
+		a.defaultUOM = "Kg"
+	}
 	a.setCachedWarehouse("")
 	a.werkaPhone = strings.TrimSpace(input.WerkaPhone)
 	a.werkaName = strings.TrimSpace(input.WerkaName)
@@ -1693,7 +1708,7 @@ func (a *ERPAuthenticator) UpdateAdminSettings(input AdminSettings) error {
 			"ERP_API_KEY":                  a.apiKey,
 			"ERP_API_SECRET":               a.apiSecret,
 			"ERP_DEFAULT_TARGET_WAREHOUSE": a.defaultWarehouse,
-			"ERP_DEFAULT_UOM":              strings.TrimSpace(input.DefaultUOM),
+			"ERP_DEFAULT_UOM":              a.defaultUOM,
 			"WERKA_PHONE":                  a.werkaPhone,
 			"WERKA_NAME":                   a.werkaName,
 			"MOBILE_DEV_WERKA_CODE":        a.werkaCode,

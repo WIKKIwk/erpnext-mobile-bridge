@@ -395,6 +395,90 @@ func TestAdminAssignedSupplierItemsReturnsEmptyWhenPermissionDeniedWithoutCache(
 	}
 }
 
+func TestSupplierItemsUsesLiveERPAssignmentsWhenLocalCacheIsStale(t *testing.T) {
+	tempDir := t.TempDir()
+	store := NewAdminSupplierStore(filepath.Join(tempDir, "admin-suppliers.json"))
+	if err := store.Put("SUP-001", AdminSupplierState{
+		AssignmentsConfigured: true,
+		AssignedItemCodes:     []string{"ITEM-OLD"},
+	}); err != nil {
+		t.Fatalf("seed admin supplier state: %v", err)
+	}
+
+	stub := &adminSuppliersERPStub{
+		listAssignedSupplierItems: func(ctx context.Context, baseURL, apiKey, apiSecret, supplier string, limit int) ([]erpnext.Item, error) {
+			return []erpnext.Item{{Code: "ITEM-NEW", Name: "New Item", UOM: "Nos"}}, nil
+		},
+	}
+
+	auth := NewERPAuthenticator(
+		stub,
+		"http://erp.test",
+		"key",
+		"secret",
+		"Stores - A",
+		"10",
+		"20",
+		"",
+		"",
+		"",
+		nil,
+		store,
+	)
+
+	items, err := auth.SupplierItems(
+		context.Background(),
+		Principal{Role: RoleSupplier, Ref: "SUP-001"},
+		"",
+		20,
+	)
+	if err != nil {
+		t.Fatalf("SupplierItems() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].Code != "ITEM-NEW" {
+		t.Fatalf("expected ITEM-NEW, got %q", items[0].Code)
+	}
+}
+
+func TestValidateSupplierItemAllowedUsesLiveERPAssignmentsWhenLocalCacheIsStale(t *testing.T) {
+	tempDir := t.TempDir()
+	store := NewAdminSupplierStore(filepath.Join(tempDir, "admin-suppliers.json"))
+	if err := store.Put("SUP-001", AdminSupplierState{
+		AssignmentsConfigured: true,
+		AssignedItemCodes:     []string{"ITEM-OLD"},
+	}); err != nil {
+		t.Fatalf("seed admin supplier state: %v", err)
+	}
+
+	stub := &adminSuppliersERPStub{
+		listAssignedSupplierItems: func(ctx context.Context, baseURL, apiKey, apiSecret, supplier string, limit int) ([]erpnext.Item, error) {
+			return []erpnext.Item{{Code: "ITEM-NEW", Name: "New Item", UOM: "Nos"}}, nil
+		},
+	}
+
+	auth := NewERPAuthenticator(
+		stub,
+		"http://erp.test",
+		"key",
+		"secret",
+		"Stores - A",
+		"10",
+		"20",
+		"",
+		"",
+		"",
+		nil,
+		store,
+	)
+
+	if err := auth.validateSupplierItemAllowed(context.Background(), "SUP-001", "ITEM-NEW"); err != nil {
+		t.Fatalf("validateSupplierItemAllowed() error = %v", err)
+	}
+}
+
 func TestAdminUpdateSupplierPhoneNormalizesAndPersists(t *testing.T) {
 	var updatedPhone string
 	var updatedDetails string
@@ -438,6 +522,40 @@ func TestAdminUpdateSupplierPhoneNormalizesAndPersists(t *testing.T) {
 	}
 	if updatedDetails != "Telefon: +998901234567\nAccord Code: 10ABCDEF1234" {
 		t.Fatalf("unexpected details payload: %q", updatedDetails)
+	}
+}
+
+func TestAdminSettingsRoundTripsDefaultUOM(t *testing.T) {
+	t.Setenv("ERP_DEFAULT_UOM", "")
+
+	auth := NewERPAuthenticator(
+		&adminSuppliersERPStub{},
+		"http://erp.test",
+		"key",
+		"secret",
+		"Stores - A",
+		"10",
+		"20",
+		"",
+		"",
+		"",
+		nil,
+		nil,
+	)
+
+	initial := auth.AdminSettings()
+	if initial.DefaultUOM != "Kg" {
+		t.Fatalf("unexpected initial default UOM: %q", initial.DefaultUOM)
+	}
+
+	initial.DefaultUOM = "Lt"
+	if err := auth.UpdateAdminSettings(initial); err != nil {
+		t.Fatalf("UpdateAdminSettings() error = %v", err)
+	}
+
+	updated := auth.AdminSettings()
+	if updated.DefaultUOM != "Lt" {
+		t.Fatalf("unexpected updated default UOM: %q", updated.DefaultUOM)
 	}
 }
 

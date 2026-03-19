@@ -603,14 +603,6 @@ func (a *ERPAuthenticator) supplierAllowedItems(ctx context.Context, principal P
 	if state.Removed || state.Blocked {
 		return []SupplierItem{}, nil
 	}
-	if !state.AssignmentsConfigured {
-		items, err := a.erp.SearchSupplierItems(ctx, a.baseURL, a.apiKey, a.apiSecret, principal.Ref, query, limit)
-		if err != nil {
-			return nil, err
-		}
-		return a.mapSupplierItems(ctx, items)
-	}
-
 	items, err := a.adminAssignedItems(ctx, principal.Ref, state, limit)
 	if err != nil {
 		return nil, err
@@ -632,10 +624,6 @@ func (a *ERPAuthenticator) validateSupplierItemAllowed(ctx context.Context, supp
 	if state.Removed || state.Blocked {
 		return ErrInvalidCredentials
 	}
-	if !state.AssignmentsConfigured {
-		return nil
-	}
-
 	items, err := a.adminAssignedItems(ctx, supplierRef, state, 200)
 	if err != nil {
 		return err
