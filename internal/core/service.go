@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"mobile_server/internal/erpnext"
 	"mobile_server/internal/suplier"
@@ -33,6 +34,7 @@ const (
 	customerDeliveryResultEventPrefix = "customer_delivery_result:"
 	notificationTargetPurchaseReceipt = "purchase_receipt"
 	notificationTargetDeliveryNote    = "delivery_note"
+	minCustomerRejectReasonRunes      = 3
 	deliveryFlowStateNone             = 0
 	deliveryFlowStateSubmitted        = 1
 	deliveryFlowStateReturned         = 2
@@ -1474,7 +1476,7 @@ func (a *ERPAuthenticator) CustomerRespondDelivery(ctx context.Context, principa
 	if customerDeliveryStatus(draft) != "pending" {
 		return CustomerDeliveryDetail{}, fmt.Errorf("delivery note is not pending")
 	}
-	if !approve && strings.TrimSpace(reason) == "" {
+	if !approve && utf8.RuneCountInString(strings.TrimSpace(reason)) < minCustomerRejectReasonRunes {
 		return CustomerDeliveryDetail{}, ErrInvalidInput
 	}
 

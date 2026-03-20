@@ -474,7 +474,7 @@ func TestCustomerRespondDeliveryRejectRequiresReason(t *testing.T) {
 		Principal{Role: RoleCustomer, Ref: "CUST-001"},
 		"MAT-DN-0001",
 		false,
-		"",
+		"ok",
 	)
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput, got %v", err)
