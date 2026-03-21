@@ -1295,7 +1295,7 @@ func (a *ERPAuthenticator) CreateWerkaCustomerIssue(ctx context.Context, princip
 		ItemName:     item.Name,
 		UOM:          item.UOM,
 		Qty:          qty,
-		CreatedLabel: time.Now().Format("2006-01-02"),
+		CreatedLabel: currentTimestampLabel(),
 	}, nil
 }
 
@@ -1636,7 +1636,7 @@ func (a *ERPAuthenticator) CreateDispatch(ctx context.Context, principal Princip
 		SentQty:      draft.Qty,
 		AcceptedQty:  0,
 		Status:       "pending",
-		CreatedLabel: draft.PostingDate,
+		CreatedLabel: currentTimestampLabel(),
 	}, nil
 }
 
@@ -1702,7 +1702,7 @@ func (a *ERPAuthenticator) ConfirmReceipt(ctx context.Context, receiptID string,
 		AcceptedQty:  result.AcceptedQty,
 		Note:         result.Note,
 		Status:       dispatchStatusFromQuantities(result.SentQty, result.AcceptedQty),
-		CreatedLabel: result.Name,
+		CreatedLabel: currentTimestampLabel(),
 	}, nil
 }
 
@@ -1794,6 +1794,10 @@ func (a *ERPAuthenticator) AdminRegenerateWerkaCode() (AdminSettings, error) {
 
 func (a *ERPAuthenticator) nowUTC() time.Time {
 	return time.Now().UTC()
+}
+
+func currentTimestampLabel() string {
+	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
 func (a *ERPAuthenticator) cachedWarehouse() string {
