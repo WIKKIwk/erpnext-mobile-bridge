@@ -1379,8 +1379,60 @@ func TestServerSupplierHistorySkipsCommentBatchForCleanRecords(t *testing.T) {
 	if len(fakeERP.batchCommentKeys) != 0 {
 		t.Fatalf("expected no batch comment calls, got %+v", fakeERP.batchCommentKeys)
 	}
-	if fakeERP.lastSupplierLimit != 100 {
-		t.Fatalf("expected supplier history limit 100, got %d", fakeERP.lastSupplierLimit)
+}
+
+func TestServerSupplierHistoryReturnsCanonicalFullList(t *testing.T) {
+	receipts := make([]erpnext.PurchaseReceiptDraft, 0, 120)
+	for index := 0; index < 120; index++ {
+		receipts = append(receipts, erpnext.PurchaseReceiptDraft{
+			Name:                 fmt.Sprintf("MAT-PRE-%04d", index+1),
+			Supplier:             "SUP-001",
+			SupplierName:         "Abdulloh",
+			SupplierDeliveryNote: fmt.Sprintf("TG:+998900000000|%d", index+1),
+			ItemCode:             fmt.Sprintf("ITEM-%03d", index+1),
+			ItemName:             fmt.Sprintf("Item %03d", index+1),
+			Qty:                  1,
+			UOM:                  "Kg",
+			PostingDate:          "2026-03-20",
+		})
+	}
+	server := NewServer(NewERPAuthenticator(
+		&fakeERPClient{supplierReceipts: receipts},
+		"http://localhost:8000",
+		"key",
+		"secret",
+		"Stores - CH",
+		"10",
+		"20",
+		"20WERKA0001",
+		"+998901111111",
+		"Werka",
+		nil,
+		nil,
+	))
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleSupplier,
+		DisplayName: "Abdulloh",
+		Ref:         "SUP-001",
+	})
+	if err != nil {
+		t.Fatalf("failed to create supplier session: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/mobile/supplier/history", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected supplier history status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	var items []DispatchRecord
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatalf("decode supplier history: %v", err)
+	}
+	if len(items) != 120 {
+		t.Fatalf("expected 120 supplier history items, got %d", len(items))
 	}
 }
 

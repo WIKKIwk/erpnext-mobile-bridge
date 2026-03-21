@@ -401,12 +401,11 @@ func (a *ERPAuthenticator) inferRole(code string) (PrincipalRole, error) {
 	}
 }
 
-func (a *ERPAuthenticator) SupplierHistory(ctx context.Context, principal Principal, limit int) ([]DispatchRecord, error) {
-	items, err := a.erp.ListSupplierPurchaseReceipts(ctx, a.baseURL, a.apiKey, a.apiSecret, principal.Ref, limit)
+func (a *ERPAuthenticator) SupplierHistory(ctx context.Context, principal Principal) ([]DispatchRecord, error) {
+	items, err := a.collectSupplierPurchaseReceipts(ctx, principal.Ref)
 	if err != nil {
 		return nil, err
 	}
-	items = uniquePurchaseReceiptsByName(items)
 
 	commentsByReceipt, err := a.purchaseReceiptCommentsByName(ctx, items, 100)
 	if err != nil {
