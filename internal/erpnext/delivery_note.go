@@ -200,8 +200,8 @@ func (c *Client) EnsureDeliveryNoteStateFields(ctx context.Context, baseURL, api
 			"label":           field.label,
 			"fieldtype":       field.fieldtype,
 			"insert_after":    field.insertAfter,
-			"hidden":          1,
-			"read_only":       0,
+			"hidden":          0,
+			"read_only":       1,
 			"allow_on_submit": 1,
 			"no_copy":         1,
 		}
