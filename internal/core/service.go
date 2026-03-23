@@ -38,8 +38,8 @@ const (
 	deliveryFlowStateNone             = 0
 	deliveryFlowStateSubmitted        = 1
 	deliveryFlowStateReturned         = 2
-	customerStatePending              = 0
-	customerStateConfirmed            = 1
+	customerStatePending              = 1
+	customerStateConfirmed            = 3
 	customerStateRejected             = 2
 	deliveryActorUnknown              = 0
 	deliveryActorWerka                = 1
