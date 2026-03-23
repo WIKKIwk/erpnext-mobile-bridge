@@ -458,6 +458,14 @@ func TestWerkaLoginAcceptsLocalNineDigitConfiguredPhone(t *testing.T) {
 	if principal.Role != RoleWerka {
 		t.Fatalf("expected werka role, got %q", principal.Role)
 	}
+
+	principal, err = auth.Login(context.Background(), "+99888862440", "20ABCDEF1234")
+	if err != nil {
+		t.Fatalf("Login() with loose format error = %v", err)
+	}
+	if principal.Role != RoleWerka {
+		t.Fatalf("expected werka role for loose format, got %q", principal.Role)
+	}
 }
 
 func TestCustomerRespondDeliveryRejectRequiresReason(t *testing.T) {

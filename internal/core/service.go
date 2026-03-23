@@ -310,7 +310,7 @@ func (a *ERPAuthenticator) Login(ctx context.Context, phone, code string) (Princ
 				if err != nil {
 					return Principal{}, ErrInvalidCredentials
 				}
-				if expectedWerkaPhone != normalizedPhone {
+				if !phonesLooselyMatch(expectedWerkaPhone, normalizedPhone) {
 					return Principal{}, ErrInvalidCredentials
 				}
 			}
@@ -1829,6 +1829,31 @@ func normalizeConfigPhone(phone string) (string, error) {
 		}
 	}
 	return suplier.NormalizePhone(cleanPhone)
+}
+
+func phonesLooselyMatch(left, right string) bool {
+	leftDigits := onlyDigits(left)
+	rightDigits := onlyDigits(right)
+	if leftDigits == "" || rightDigits == "" {
+		return false
+	}
+	if leftDigits == rightDigits {
+		return true
+	}
+	if len(leftDigits) >= 9 && len(rightDigits) >= 9 {
+		return leftDigits[len(leftDigits)-9:] == rightDigits[len(rightDigits)-9:]
+	}
+	return false
+}
+
+func onlyDigits(value string) string {
+	var digits strings.Builder
+	for _, r := range value {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	return digits.String()
 }
 
 func (a *ERPAuthenticator) cachedWarehouse() string {
