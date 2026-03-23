@@ -158,12 +158,14 @@ func (c *Client) EnsureDeliveryNoteStateFields(ctx context.Context, baseURL, api
 		fieldtype string
 		insertAfter string
 		options   string
+		hidden    int
 	}{
-		{"accord_flow_state", "Accord Flow State", "Int", "remarks", ""},
-		{"accord_customer_state", "Accord Customer State", "Int", "accord_flow_state", ""},
-		{"accord_customer_reason", "Accord Customer Reason", "Small Text", "accord_customer_state", ""},
-		{"accord_delivery_actor", "Accord Delivery Actor", "Data", "accord_customer_reason", ""},
-		{"accord_ui_status", "Accord UI Status", "Select", "accord_delivery_actor", "pending\nconfirm\nrejected"},
+		{"accord_flow_state", "Accord Flow State", "Int", "remarks", "", 1},
+		{"accord_customer_state", "Accord Customer State", "Int", "accord_flow_state", "", 1},
+		{"accord_customer_reason", "Accord Customer Reason", "Small Text", "accord_customer_state", "", 1},
+		{"accord_delivery_actor", "Accord Delivery Actor", "Data", "accord_customer_reason", "", 1},
+		{"accord_status_section", "Accord Status", "Section Break", "posting_time", "", 0},
+		{"accord_ui_status", "Accord UI Status", "Select", "accord_status_section", "pending\nconfirm\nrejected", 0},
 	}
 	filtersJSON, _ := json.Marshal([][]interface{}{
 		{"dt", "=", "Delivery Note"},
@@ -172,6 +174,7 @@ func (c *Client) EnsureDeliveryNoteStateFields(ctx context.Context, baseURL, api
 			"accord_customer_state",
 			"accord_customer_reason",
 			"accord_delivery_actor",
+			"accord_status_section",
 			"accord_ui_status",
 		}},
 	})
@@ -203,7 +206,7 @@ func (c *Client) EnsureDeliveryNoteStateFields(ctx context.Context, baseURL, api
 			"label":           field.label,
 			"fieldtype":       field.fieldtype,
 			"insert_after":    field.insertAfter,
-			"hidden":          0,
+			"hidden":          field.hidden,
 			"read_only":       1,
 			"allow_on_submit": 1,
 			"no_copy":         1,
