@@ -664,12 +664,10 @@ func (s *Server) handleCustomerRespond(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detail, err := s.auth.CustomerRespondDelivery(
+	detail, err := s.auth.CustomerRespondDeliveryRequest(
 		r.Context(),
 		principal,
-		strings.TrimSpace(req.DeliveryNoteID),
-		req.Approve,
-		strings.TrimSpace(req.Reason),
+		req,
 	)
 	if err != nil {
 		if errors.Is(err, ErrUnauthorized) {

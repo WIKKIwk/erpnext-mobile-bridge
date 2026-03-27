@@ -82,6 +82,53 @@ func TestValidateCredentialsInvalidAuth(t *testing.T) {
 	}
 }
 
+func TestApplyPartialDeliveryReturnQtyUpdatesFirstItem(t *testing.T) {
+	doc := map[string]interface{}{
+		"items": []interface{}{
+			map[string]interface{}{
+				"item_code": "ITEM-001",
+				"qty":       -10.0,
+			},
+		},
+	}
+
+	if err := applyPartialDeliveryReturnQty(doc, 3); err != nil {
+		t.Fatalf("applyPartialDeliveryReturnQty() error = %v", err)
+	}
+
+	items := doc["items"].([]interface{})
+	first := items[0].(map[string]interface{})
+	if got := first["qty"]; got != -3.0 {
+		t.Fatalf("expected qty -3.0, got %+v", got)
+	}
+}
+
+func TestCustomerDecisionRemarksRoundTrip(t *testing.T) {
+	remarks := UpsertCustomerDecisionPayloadInRemarks(
+		"",
+		"partial",
+		"Brak chiqdi",
+		7,
+		3,
+		"Kg",
+		"3 kg qaytdi",
+	)
+
+	if got := ExtractCustomerDecisionState(remarks); got != "partial" {
+		t.Fatalf("unexpected state: %q", got)
+	}
+	if got := ExtractCustomerDecisionReason(remarks); got != "Brak chiqdi" {
+		t.Fatalf("unexpected reason: %q", got)
+	}
+	if got := ExtractCustomerDecisionComment(remarks); got != "3 kg qaytdi" {
+		t.Fatalf("unexpected comment: %q", got)
+	}
+	acceptedQty, returnedQty := ExtractCustomerDecisionQuantities(remarks)
+	if acceptedQty != 7 || returnedQty != 3 {
+		t.Fatalf("unexpected quantities: accepted=%.2f returned=%.2f", acceptedQty, returnedQty)
+	}
+}
+
 func TestSearchItems(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/resource/Item" {

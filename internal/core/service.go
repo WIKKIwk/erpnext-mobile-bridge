@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -41,10 +42,12 @@ const (
 	deliveryFlowStateSubmitted        = 1
 	deliveryFlowStateReturned         = 2
 	customerStatePending              = 1
-	customerStateConfirmed            = 3
 	customerStateRejected             = 2
+	customerStateConfirmed            = 3
+	customerStatePartial              = 4
 	deliveryActorUnknown              = 0
 	deliveryActorWerka                = 1
+	customerQtyTolerance              = 0.0001
 )
 
 type ERPClient interface {
@@ -78,6 +81,7 @@ type ERPClient interface {
 	ListDeliveryNoteCommentsBatch(ctx context.Context, baseURL, apiKey, apiSecret string, names []string, limit int) (map[string][]erpnext.Comment, error)
 	AddDeliveryNoteComment(ctx context.Context, baseURL, apiKey, apiSecret, name, content string) error
 	CreateAndSubmitDeliveryNoteReturn(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string) (erpnext.DeliveryNoteResult, error)
+	CreateAndSubmitPartialDeliveryNoteReturn(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string, returnedQty float64) (erpnext.DeliveryNoteResult, error)
 	ListPendingPurchaseReceipts(ctx context.Context, baseURL, apiKey, apiSecret string, limit int) ([]erpnext.PurchaseReceiptDraft, error)
 	ListPendingPurchaseReceiptsPage(ctx context.Context, baseURL, apiKey, apiSecret string, limit, offset int) ([]erpnext.PurchaseReceiptDraft, error)
 	ListTelegramPurchaseReceipts(ctx context.Context, baseURL, apiKey, apiSecret string, limit int) ([]erpnext.PurchaseReceiptDraft, error)
@@ -1514,7 +1518,7 @@ func (a *ERPAuthenticator) CustomerSummary(ctx context.Context, principal Princi
 		switch customerDeliveryStatus(item) {
 		case "accepted":
 			summary.ConfirmedCount++
-		case "rejected":
+		case "partial", "rejected":
 			summary.RejectedCount++
 		default:
 			summary.PendingCount++
@@ -1537,7 +1541,12 @@ func (a *ERPAuthenticator) CustomerStatusDetails(ctx context.Context, principal 
 		if !customerDeliveryVisible(item) {
 			continue
 		}
-		if customerDeliveryStatus(item) != filterKind {
+		status := customerDeliveryStatus(item)
+		if filterKind == "rejected" {
+			if status != "rejected" && status != "partial" {
+				continue
+			}
+		} else if status != filterKind {
 			continue
 		}
 		result = append(result, mapDeliveryNoteToDispatchRecord(item))
@@ -1553,15 +1562,27 @@ func (a *ERPAuthenticator) CustomerDeliveryDetail(ctx context.Context, principal
 	if strings.TrimSpace(draft.Customer) != strings.TrimSpace(principal.Ref) {
 		return CustomerDeliveryDetail{}, ErrUnauthorized
 	}
-	pending := customerDeliveryStatus(draft) == "pending"
+	status := customerDeliveryStatus(draft)
+	pending := status == "pending"
 	return CustomerDeliveryDetail{
-		Record:     mapDeliveryNoteToDispatchRecord(draft),
-		CanApprove: pending,
-		CanReject:  pending,
+		Record:             mapDeliveryNoteToDispatchRecord(draft),
+		CanApprove:         pending,
+		CanReject:          pending,
+		CanPartiallyAccept: pending,
+		CanReportClaim:     status == "accepted",
 	}, nil
 }
 
 func (a *ERPAuthenticator) CustomerRespondDelivery(ctx context.Context, principal Principal, deliveryNoteID string, approve bool, reason string) (CustomerDeliveryDetail, error) {
+	return a.CustomerRespondDeliveryRequest(ctx, principal, CustomerDeliveryResponseRequest{
+		DeliveryNoteID: strings.TrimSpace(deliveryNoteID),
+		Approve:        &approve,
+		Reason:         strings.TrimSpace(reason),
+	})
+}
+
+func (a *ERPAuthenticator) CustomerRespondDeliveryRequest(ctx context.Context, principal Principal, req CustomerDeliveryResponseRequest) (CustomerDeliveryDetail, error) {
+	deliveryNoteID := strings.TrimSpace(req.DeliveryNoteID)
 	draft, err := a.erp.GetDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, deliveryNoteID)
 	if err != nil {
 		return CustomerDeliveryDetail{}, err
@@ -1569,30 +1590,58 @@ func (a *ERPAuthenticator) CustomerRespondDelivery(ctx context.Context, principa
 	if strings.TrimSpace(draft.Customer) != strings.TrimSpace(principal.Ref) {
 		return CustomerDeliveryDetail{}, ErrUnauthorized
 	}
-	if customerDeliveryStatus(draft) != "pending" {
-		return CustomerDeliveryDetail{}, fmt.Errorf("delivery note is not pending")
-	}
-	if !approve && utf8.RuneCountInString(strings.TrimSpace(reason)) < minCustomerRejectReasonRunes {
-		return CustomerDeliveryDetail{}, ErrInvalidInput
+	decision, err := normalizeCustomerDeliveryDecision(req, draft)
+	if err != nil {
+		return CustomerDeliveryDetail{}, err
 	}
 
-	decisionState := strconv.Itoa(customerStateRejected)
-	if approve {
-		decisionState = strconv.Itoa(customerStateConfirmed)
+	if decision.returnedQty > 0 {
+		if nearlyEqualQty(decision.returnedQty, draft.Qty) {
+			if _, err := a.erp.CreateAndSubmitDeliveryNoteReturn(
+				ctx,
+				a.baseURL,
+				a.apiKey,
+				a.apiSecret,
+				draft.Name,
+			); err != nil {
+				return CustomerDeliveryDetail{}, err
+			}
+		} else {
+			if _, err := a.erp.CreateAndSubmitPartialDeliveryNoteReturn(
+				ctx,
+				a.baseURL,
+				a.apiKey,
+				a.apiSecret,
+				draft.Name,
+				decision.returnedQty,
+			); err != nil {
+				return CustomerDeliveryDetail{}, err
+			}
+		}
 	}
 
-	if !approve {
-		if _, err := a.erp.CreateAndSubmitDeliveryNoteReturn(
+	combinedReason := combineCustomerReasonAndComment(decision.reason, decision.comment)
+	remarks := erpnext.UpsertCustomerDecisionPayloadInRemarks(
+		draft.Remarks,
+		decision.stateLabel(),
+		decision.reason,
+		decision.acceptedQty,
+		decision.returnedQty,
+		draft.UOM,
+		decision.comment,
+	)
+	if remarks != strings.TrimSpace(draft.Remarks) {
+		if err := a.erp.UpdateDeliveryNoteRemarks(
 			ctx,
 			a.baseURL,
 			a.apiKey,
 			a.apiSecret,
 			draft.Name,
+			remarks,
 		); err != nil {
 			return CustomerDeliveryDetail{}, err
 		}
 	}
-
 	if err := a.erp.UpdateDeliveryNoteState(
 		ctx,
 		a.baseURL,
@@ -1601,26 +1650,29 @@ func (a *ERPAuthenticator) CustomerRespondDelivery(ctx context.Context, principa
 		draft.Name,
 		erpnext.DeliveryNoteStateUpdate{
 			FlowState:      strconv.Itoa(deliveryFlowStateSubmitted),
-			CustomerState:  decisionState,
-			CustomerReason: strings.TrimSpace(reason),
+			CustomerState:  strconv.Itoa(decision.customerState),
+			CustomerReason: combinedReason,
 			DeliveryActor:  strconv.Itoa(deliveryActorWerka),
-			UIStatus:       customerDeliveryUIStatus(deliveryFlowStateSubmitted, parseAccordInt(decisionState, customerStatePending)),
+			UIStatus:       customerDeliveryUIStatus(deliveryFlowStateSubmitted, decision.customerState),
 		},
 	); err != nil {
 		return CustomerDeliveryDetail{}, err
 	}
+	draft.Remarks = remarks
 	draft.AccordFlowState = strconv.Itoa(deliveryFlowStateSubmitted)
-	draft.AccordCustomerState = decisionState
-	draft.AccordCustomerReason = strings.TrimSpace(reason)
+	draft.AccordCustomerState = strconv.Itoa(decision.customerState)
+	draft.AccordCustomerReason = combinedReason
 	draft.AccordDeliveryActor = strconv.Itoa(deliveryActorWerka)
 	draft.AccordUIStatus = customerDeliveryUIStatus(
 		deliveryFlowStateSubmitted,
-		parseAccordInt(decisionState, customerStatePending),
+		decision.customerState,
 	)
 	return CustomerDeliveryDetail{
-		Record:     mapDeliveryNoteToDispatchRecord(draft),
-		CanApprove: false,
-		CanReject:  false,
+		Record:             mapDeliveryNoteToDispatchRecord(draft),
+		CanApprove:         false,
+		CanReject:          false,
+		CanPartiallyAccept: false,
+		CanReportClaim:     false,
 	}, nil
 }
 
@@ -1636,6 +1688,8 @@ func customerDeliveryStatus(item erpnext.DeliveryNoteDraft) string {
 		return "rejected"
 	case customerStateConfirmed:
 		return "accepted"
+	case customerStatePartial:
+		return "partial"
 	default:
 		return "pending"
 	}
@@ -1654,6 +1708,8 @@ func customerDeliveryUIStatus(flowState, customerState int) string {
 		return "confirm"
 	case customerStateRejected:
 		return "rejected"
+	case customerStatePartial:
+		return "rejected"
 	default:
 		return "pending"
 	}
@@ -1661,7 +1717,7 @@ func customerDeliveryUIStatus(flowState, customerState int) string {
 
 func buildCustomerDeliveryResultEvent(item erpnext.DeliveryNoteDraft) (DispatchRecord, bool) {
 	state := customerDeliveryStatus(item)
-	if state != "accepted" && state != "rejected" {
+	if state != "accepted" && state != "partial" && state != "rejected" {
 		return DispatchRecord{}, false
 	}
 
@@ -1672,10 +1728,176 @@ func buildCustomerDeliveryResultEvent(item erpnext.DeliveryNoteDraft) (DispatchR
 		base.Highlight = "Customer mahsulotni qabul qildi"
 		return base, true
 	}
+	if state == "partial" {
+		base.EventType = "customer_delivery_partial"
+		base.Highlight = "Customer mahsulotning bir qismini qaytardi"
+		return base, true
+	}
 
 	base.EventType = "customer_delivery_rejected"
 	base.Highlight = "Customer mahsulotni rad etdi"
 	return base, true
+}
+
+type customerDeliveryDecision struct {
+	mode          CustomerDeliveryResponseMode
+	customerState int
+	acceptedQty   float64
+	returnedQty   float64
+	reason        string
+	comment       string
+}
+
+func (d customerDeliveryDecision) stateLabel() string {
+	switch d.customerState {
+	case customerStateConfirmed:
+		return "confirmed"
+	case customerStateRejected:
+		return "rejected"
+	case customerStatePartial:
+		return "partial"
+	default:
+		return "pending"
+	}
+}
+
+func normalizeCustomerDeliveryDecision(req CustomerDeliveryResponseRequest, draft erpnext.DeliveryNoteDraft) (customerDeliveryDecision, error) {
+	currentStatus := customerDeliveryStatus(draft)
+	mode := strings.TrimSpace(string(req.Mode))
+	if mode == "" && req.Approve != nil {
+		if *req.Approve {
+			mode = string(CustomerDeliveryResponseAcceptAll)
+		} else {
+			mode = string(CustomerDeliveryResponseRejectAll)
+		}
+	}
+
+	reason := strings.TrimSpace(req.Reason)
+	comment := strings.TrimSpace(req.Comment)
+	sentQty := draft.Qty
+	if sentQty <= 0 {
+		return customerDeliveryDecision{}, ErrInvalidInput
+	}
+
+	switch CustomerDeliveryResponseMode(mode) {
+	case CustomerDeliveryResponseAcceptAll:
+		if currentStatus != "pending" {
+			return customerDeliveryDecision{}, fmt.Errorf("delivery note is not pending")
+		}
+		return customerDeliveryDecision{
+			mode:          CustomerDeliveryResponseAcceptAll,
+			customerState: customerStateConfirmed,
+			acceptedQty:   sentQty,
+			reason:        reason,
+			comment:       comment,
+		}, nil
+	case CustomerDeliveryResponseRejectAll:
+		if currentStatus != "pending" {
+			return customerDeliveryDecision{}, fmt.Errorf("delivery note is not pending")
+		}
+		if !hasMeaningfulCustomerReturnReason(reason, comment) {
+			return customerDeliveryDecision{}, ErrInvalidInput
+		}
+		return customerDeliveryDecision{
+			mode:          CustomerDeliveryResponseRejectAll,
+			customerState: customerStateRejected,
+			returnedQty:   sentQty,
+			reason:        reason,
+			comment:       comment,
+		}, nil
+	case CustomerDeliveryResponseAcceptPartial:
+		if currentStatus != "pending" {
+			return customerDeliveryDecision{}, fmt.Errorf("delivery note is not pending")
+		}
+		if !hasMeaningfulCustomerReturnReason(reason, comment) {
+			return customerDeliveryDecision{}, ErrInvalidInput
+		}
+		acceptedQty, returnedQty, err := normalizePartialQuantities(sentQty, req.AcceptedQty, req.ReturnedQty)
+		if err != nil {
+			return customerDeliveryDecision{}, err
+		}
+		return customerDeliveryDecision{
+			mode:          CustomerDeliveryResponseAcceptPartial,
+			customerState: customerStatePartial,
+			acceptedQty:   acceptedQty,
+			returnedQty:   returnedQty,
+			reason:        reason,
+			comment:       comment,
+		}, nil
+	case CustomerDeliveryResponseClaimAfterAccept:
+		if currentStatus != "accepted" {
+			return customerDeliveryDecision{}, fmt.Errorf("delivery note cannot accept claim in status %s", currentStatus)
+		}
+		if !hasMeaningfulCustomerReturnReason(reason, comment) {
+			return customerDeliveryDecision{}, ErrInvalidInput
+		}
+		returnedQty := req.ReturnedQty
+		if returnedQty <= 0 || returnedQty > sentQty+customerQtyTolerance {
+			return customerDeliveryDecision{}, ErrInvalidInput
+		}
+		if nearlyEqualQty(returnedQty, sentQty) {
+			return customerDeliveryDecision{
+				mode:          CustomerDeliveryResponseClaimAfterAccept,
+				customerState: customerStateRejected,
+				returnedQty:   sentQty,
+				reason:        reason,
+				comment:       comment,
+			}, nil
+		}
+		return customerDeliveryDecision{
+			mode:          CustomerDeliveryResponseClaimAfterAccept,
+			customerState: customerStatePartial,
+			acceptedQty:   sentQty - returnedQty,
+			returnedQty:   returnedQty,
+			reason:        reason,
+			comment:       comment,
+		}, nil
+	default:
+		return customerDeliveryDecision{}, ErrInvalidInput
+	}
+}
+
+func normalizePartialQuantities(sentQty, acceptedQty, returnedQty float64) (float64, float64, error) {
+	switch {
+	case acceptedQty > 0 && returnedQty > 0:
+	case acceptedQty > 0:
+		returnedQty = sentQty - acceptedQty
+	case returnedQty > 0:
+		acceptedQty = sentQty - returnedQty
+	default:
+		return 0, 0, ErrInvalidInput
+	}
+	if acceptedQty <= 0 || returnedQty <= 0 {
+		return 0, 0, ErrInvalidInput
+	}
+	if math.Abs((acceptedQty+returnedQty)-sentQty) > customerQtyTolerance {
+		return 0, 0, ErrInvalidInput
+	}
+	return acceptedQty, returnedQty, nil
+}
+
+func nearlyEqualQty(left, right float64) bool {
+	return math.Abs(left-right) <= customerQtyTolerance
+}
+
+func hasMeaningfulCustomerReturnReason(reason, comment string) bool {
+	if utf8.RuneCountInString(strings.TrimSpace(reason)) >= minCustomerRejectReasonRunes {
+		return true
+	}
+	return utf8.RuneCountInString(strings.TrimSpace(comment)) >= minCustomerRejectReasonRunes
+}
+
+func combineCustomerReasonAndComment(reason, comment string) string {
+	trimmedReason := strings.TrimSpace(reason)
+	trimmedComment := strings.TrimSpace(comment)
+	switch {
+	case trimmedReason == "":
+		return trimmedComment
+	case trimmedComment == "":
+		return trimmedReason
+	default:
+		return trimmedReason + ". " + trimmedComment
+	}
 }
 
 func deliveryFlowStateValue(item erpnext.DeliveryNoteDraft) int {
@@ -2313,17 +2535,24 @@ func mapPurchaseReceiptToDispatchRecord(item erpnext.PurchaseReceiptDraft, fallb
 
 func mapDeliveryNoteToDispatchRecord(item erpnext.DeliveryNoteDraft) DispatchRecord {
 	status := customerDeliveryStatus(item)
-	acceptedQty := 0.0
+	acceptedQty, returnedQty := customerDecisionQuantities(item, status)
 	note := ""
 	switch status {
 	case "accepted":
-		acceptedQty = item.Qty
 		note = "Customer tasdiqladi."
+	case "partial":
+		note = fmt.Sprintf(
+			"Customer qisman qabul qildi. Qabul: %.2f %s. Qaytdi: %.2f %s.",
+			acceptedQty,
+			item.UOM,
+			returnedQty,
+			item.UOM,
+		)
 	case "rejected":
 		note = "Customer rad etdi."
-		if reason := strings.TrimSpace(item.AccordCustomerReason); reason != "" {
-			note += " Sabab: " + reason
-		}
+	}
+	if reason := strings.TrimSpace(item.AccordCustomerReason); reason != "" {
+		note += " Sabab: " + reason
 	}
 	return DispatchRecord{
 		ID:           item.Name,
@@ -2338,6 +2567,29 @@ func mapDeliveryNoteToDispatchRecord(item erpnext.DeliveryNoteDraft) DispatchRec
 		Note:         note,
 		Status:       status,
 		CreatedLabel: firstNonEmpty(item.Modified, item.PostingDate),
+	}
+}
+
+func customerDecisionQuantities(item erpnext.DeliveryNoteDraft, status string) (acceptedQty, returnedQty float64) {
+	acceptedQty, returnedQty = erpnext.ExtractCustomerDecisionQuantities(item.Remarks)
+	switch status {
+	case "accepted":
+		if acceptedQty <= 0 {
+			acceptedQty = item.Qty
+		}
+		return acceptedQty, 0
+	case "partial":
+		if acceptedQty <= 0 && returnedQty > 0 {
+			acceptedQty = maxFloat(item.Qty-returnedQty, 0)
+		}
+		if returnedQty <= 0 && acceptedQty > 0 {
+			returnedQty = maxFloat(item.Qty-acceptedQty, 0)
+		}
+		return acceptedQty, returnedQty
+	case "rejected":
+		return 0, item.Qty
+	default:
+		return acceptedQty, returnedQty
 	}
 }
 

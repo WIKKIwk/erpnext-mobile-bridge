@@ -8,16 +8,16 @@ import (
 
 func TestBuildCustomerDeliveryResultEventAccepted(t *testing.T) {
 	item := erpnext.DeliveryNoteDraft{
-		Name:         "MAT-DN-0001",
-		Customer:     "CUST-001",
-		CustomerName: "Comfi",
-		ItemCode:     "ITEM-001",
-		ItemName:     "Chers",
-		Qty:          4,
-		UOM:          "Nos",
-		PostingDate:  "2026-03-14",
-		DocStatus:    1,
-		AccordFlowState:    "1",
+		Name:                "MAT-DN-0001",
+		Customer:            "CUST-001",
+		CustomerName:        "Comfi",
+		ItemCode:            "ITEM-001",
+		ItemName:            "Chers",
+		Qty:                 4,
+		UOM:                 "Nos",
+		PostingDate:         "2026-03-14",
+		DocStatus:           1,
+		AccordFlowState:     "1",
 		AccordCustomerState: "3",
 	}
 
@@ -41,17 +41,17 @@ func TestBuildCustomerDeliveryResultEventAccepted(t *testing.T) {
 
 func TestBuildCustomerDeliveryResultEventRejected(t *testing.T) {
 	item := erpnext.DeliveryNoteDraft{
-		Name:         "MAT-DN-0002",
-		Customer:     "CUST-001",
-		CustomerName: "Comfi",
-		ItemCode:     "ITEM-002",
-		ItemName:     "Test",
-		Qty:          7,
-		UOM:          "Nos",
-		PostingDate:  "2026-03-14",
-		DocStatus:    1,
-		AccordFlowState:    "1",
-		AccordCustomerState: "2",
+		Name:                 "MAT-DN-0002",
+		Customer:             "CUST-001",
+		CustomerName:         "Comfi",
+		ItemCode:             "ITEM-002",
+		ItemName:             "Test",
+		Qty:                  7,
+		UOM:                  "Nos",
+		PostingDate:          "2026-03-14",
+		DocStatus:            1,
+		AccordFlowState:      "1",
+		AccordCustomerState:  "2",
 		AccordCustomerReason: "Qabul qilinmadi",
 	}
 
@@ -69,6 +69,41 @@ func TestBuildCustomerDeliveryResultEventRejected(t *testing.T) {
 		t.Fatalf("unexpected note: %q", record.Note)
 	}
 	if record.Status != "rejected" {
+		t.Fatalf("unexpected status: %q", record.Status)
+	}
+}
+
+func TestBuildCustomerDeliveryResultEventPartial(t *testing.T) {
+	item := erpnext.DeliveryNoteDraft{
+		Name:                 "MAT-DN-0004",
+		Customer:             "CUST-001",
+		CustomerName:         "Comfi",
+		ItemCode:             "ITEM-004",
+		ItemName:             "Pista",
+		Qty:                  10,
+		UOM:                  "Kg",
+		PostingDate:          "2026-03-14",
+		DocStatus:            1,
+		AccordFlowState:      "1",
+		AccordCustomerState:  "4",
+		AccordCustomerReason: "Brak chiqdi",
+		Remarks:              erpnext.UpsertCustomerDecisionPayloadInRemarks("", "partial", "Brak chiqdi", 7, 3, "Kg", "3 kg qaytdi"),
+	}
+
+	record, ok := buildCustomerDeliveryResultEvent(item)
+	if !ok {
+		t.Fatalf("expected partial result event")
+	}
+	if record.EventType != "customer_delivery_partial" {
+		t.Fatalf("unexpected event type: %q", record.EventType)
+	}
+	if record.Highlight != "Customer mahsulotning bir qismini qaytardi" {
+		t.Fatalf("unexpected highlight: %q", record.Highlight)
+	}
+	if record.AcceptedQty != 7 {
+		t.Fatalf("unexpected accepted qty: %+v", record)
+	}
+	if record.Status != "partial" {
 		t.Fatalf("unexpected status: %q", record.Status)
 	}
 }

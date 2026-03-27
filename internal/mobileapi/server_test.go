@@ -36,6 +36,8 @@ type fakeERPClient struct {
 	lastTelegramOffset    int
 	lastStockEntry        erpnext.CreateStockEntryInput
 	lastDeliveryNote      erpnext.CreateDeliveryNoteInput
+	lastDeliveryReturn    string
+	lastDeliveryReturnQty float64
 }
 
 type recordedPushCall struct {
@@ -431,6 +433,8 @@ func (f *fakeERPClient) CreateDraftDeliveryNote(_ context.Context, _, _, _ strin
 }
 
 func (f *fakeERPClient) CreateAndSubmitDeliveryNoteReturn(_ context.Context, _, _, _, sourceName string) (erpnext.DeliveryNoteResult, error) {
+	f.lastDeliveryReturn = sourceName
+	f.lastDeliveryReturnQty = 0
 	name := "RET-DN-0001"
 	f.customerDeliveryNotes = append([]erpnext.DeliveryNoteDraft{{
 		Name:         name,
@@ -439,6 +443,26 @@ func (f *fakeERPClient) CreateAndSubmitDeliveryNoteReturn(_ context.Context, _, 
 		ItemCode:     "pista93784",
 		ItemName:     "pista",
 		Qty:          -1,
+		UOM:          "Kg",
+		PostingDate:  "2026-03-23",
+		Status:       "Return",
+		DocStatus:    1,
+		Remarks:      sourceName,
+	}}, f.customerDeliveryNotes...)
+	return erpnext.DeliveryNoteResult{Name: name}, nil
+}
+
+func (f *fakeERPClient) CreateAndSubmitPartialDeliveryNoteReturn(_ context.Context, _, _, _, sourceName string, returnedQty float64) (erpnext.DeliveryNoteResult, error) {
+	f.lastDeliveryReturn = sourceName
+	f.lastDeliveryReturnQty = returnedQty
+	name := "RET-DN-0001"
+	f.customerDeliveryNotes = append([]erpnext.DeliveryNoteDraft{{
+		Name:         name,
+		Customer:     "comfi",
+		CustomerName: "comfi",
+		ItemCode:     "pista93784",
+		ItemName:     "pista",
+		Qty:          -returnedQty,
 		UOM:          "Kg",
 		PostingDate:  "2026-03-23",
 		Status:       "Return",
@@ -2409,5 +2433,78 @@ func TestServerCustomerRespondApproveReturnsAcceptedForSubmittedDeliveryNote(t *
 	}
 	if updated.CanApprove || updated.CanReject {
 		t.Fatalf("expected actions disabled after confirm, got %+v", updated)
+	}
+}
+
+func TestServerCustomerRespondPartialReturnsQtyAwareStatus(t *testing.T) {
+	fake := &fakeERPClient{
+		customerDeliveryNotes: []erpnext.DeliveryNoteDraft{
+			{
+				Name:                "MAT-DN-0013",
+				Customer:            "CUST-001",
+				CustomerName:        "Comfi",
+				ItemCode:            "ITEM-013",
+				ItemName:            "Pista",
+				Qty:                 10,
+				UOM:                 "Kg",
+				PostingDate:         "2026-03-16",
+				Status:              "Submitted",
+				DocStatus:           1,
+				AccordFlowState:     "1",
+				AccordCustomerState: "1",
+			},
+		},
+		comments: map[string][]erpnext.Comment{},
+	}
+	server := NewServer(NewERPAuthenticator(
+		fake,
+		"http://erp.local",
+		"key",
+		"secret",
+		"Stores - A",
+		"10",
+		"20",
+		"200000000000",
+		"+998900000000",
+		"Werka",
+		NewProfileStore(t.TempDir()+"/profile_prefs.json"),
+		NewAdminSupplierStore(t.TempDir()+"/admin_suppliers.json"),
+	))
+	server.sender = &recordingPushSender{}
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleCustomer,
+		DisplayName: "Comfi",
+		Ref:         "CUST-001",
+		Phone:       "+998901000333",
+	})
+	if err != nil {
+		t.Fatalf("failed to create customer session: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/mobile/customer/respond",
+		strings.NewReader(`{"delivery_note_id":"MAT-DN-0013","mode":"accept_partial","accepted_qty":7,"returned_qty":3,"reason":"Brak chiqdi"}`),
+	)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected respond status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	var updated CustomerDeliveryDetail
+	if err := json.NewDecoder(resp.Body).Decode(&updated); err != nil {
+		t.Fatalf("decode respond failed: %v", err)
+	}
+	if updated.Record.Status != "partial" {
+		t.Fatalf("expected partial status, got %+v", updated.Record)
+	}
+	if updated.Record.AcceptedQty != 7 {
+		t.Fatalf("expected accepted qty 7, got %+v", updated.Record)
+	}
+	if fake.lastDeliveryReturn != "MAT-DN-0013" || fake.lastDeliveryReturnQty != 3 {
+		t.Fatalf("expected qty-aware return against source, got source=%q qty=%.2f", fake.lastDeliveryReturn, fake.lastDeliveryReturnQty)
 	}
 }

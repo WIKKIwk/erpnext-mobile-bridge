@@ -10,17 +10,18 @@ import (
 )
 
 type adminSuppliersERPStub struct {
-	searchSuppliers           func(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Supplier, error)
-	getSupplier               func(ctx context.Context, baseURL, apiKey, apiSecret, id string) (erpnext.Supplier, error)
-	getDeliveryNote           func(ctx context.Context, baseURL, apiKey, apiSecret, name string) (erpnext.DeliveryNoteDraft, error)
-	listDeliveryNoteComments  func(ctx context.Context, baseURL, apiKey, apiSecret, name string, limit int) ([]erpnext.Comment, error)
-	addDeliveryNoteComment    func(ctx context.Context, baseURL, apiKey, apiSecret, name, content string) error
-	createDeliveryNoteReturn  func(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string) (erpnext.DeliveryNoteResult, error)
-	listAssignedSupplierItems func(ctx context.Context, baseURL, apiKey, apiSecret, supplier string, limit int) ([]erpnext.Item, error)
-	getItemsByCodes           func(ctx context.Context, baseURL, apiKey, apiSecret string, itemCodes []string) ([]erpnext.Item, error)
-	searchWarehouses          func(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Warehouse, error)
-	updateSupplierContact     func(ctx context.Context, baseURL, apiKey, apiSecret, id, phone, details string) error
-	addPurchaseReceiptComment func(ctx context.Context, baseURL, apiKey, apiSecret, name, content string) error
+	searchSuppliers             func(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Supplier, error)
+	getSupplier                 func(ctx context.Context, baseURL, apiKey, apiSecret, id string) (erpnext.Supplier, error)
+	getDeliveryNote             func(ctx context.Context, baseURL, apiKey, apiSecret, name string) (erpnext.DeliveryNoteDraft, error)
+	listDeliveryNoteComments    func(ctx context.Context, baseURL, apiKey, apiSecret, name string, limit int) ([]erpnext.Comment, error)
+	addDeliveryNoteComment      func(ctx context.Context, baseURL, apiKey, apiSecret, name, content string) error
+	createDeliveryNoteReturn    func(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string) (erpnext.DeliveryNoteResult, error)
+	createPartialDeliveryReturn func(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string, returnedQty float64) (erpnext.DeliveryNoteResult, error)
+	listAssignedSupplierItems   func(ctx context.Context, baseURL, apiKey, apiSecret, supplier string, limit int) ([]erpnext.Item, error)
+	getItemsByCodes             func(ctx context.Context, baseURL, apiKey, apiSecret string, itemCodes []string) ([]erpnext.Item, error)
+	searchWarehouses            func(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Warehouse, error)
+	updateSupplierContact       func(ctx context.Context, baseURL, apiKey, apiSecret, id, phone, details string) error
+	addPurchaseReceiptComment   func(ctx context.Context, baseURL, apiKey, apiSecret, name, content string) error
 }
 
 func (s *adminSuppliersERPStub) SearchItems(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Item, error) {
@@ -241,6 +242,13 @@ func (s *adminSuppliersERPStub) CreateDraftDeliveryNote(ctx context.Context, bas
 func (s *adminSuppliersERPStub) CreateAndSubmitDeliveryNoteReturn(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string) (erpnext.DeliveryNoteResult, error) {
 	if s.createDeliveryNoteReturn != nil {
 		return s.createDeliveryNoteReturn(ctx, baseURL, apiKey, apiSecret, sourceName)
+	}
+	return erpnext.DeliveryNoteResult{Name: "RET-DN-0001"}, nil
+}
+
+func (s *adminSuppliersERPStub) CreateAndSubmitPartialDeliveryNoteReturn(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string, returnedQty float64) (erpnext.DeliveryNoteResult, error) {
+	if s.createPartialDeliveryReturn != nil {
+		return s.createPartialDeliveryReturn(ctx, baseURL, apiKey, apiSecret, sourceName, returnedQty)
 	}
 	return erpnext.DeliveryNoteResult{Name: "RET-DN-0001"}, nil
 }
@@ -633,6 +641,141 @@ func TestCustomerRespondDeliveryApproveDoesNotCreateReturnDeliveryNote(t *testin
 	}
 	if returnCalled {
 		t.Fatal("return delivery note should not be created on approve")
+	}
+}
+
+func TestCustomerRespondDeliveryPartialCreatesQtyAwareReturnDeliveryNote(t *testing.T) {
+	var returnAgainst string
+	var returnedQty float64
+
+	stub := &adminSuppliersERPStub{
+		getDeliveryNote: func(ctx context.Context, baseURL, apiKey, apiSecret, name string) (erpnext.DeliveryNoteDraft, error) {
+			return erpnext.DeliveryNoteDraft{
+				Name:                "MAT-DN-0001",
+				Customer:            "CUST-001",
+				CustomerName:        "Comfi",
+				ItemCode:            "ITEM-001",
+				ItemName:            "Chers",
+				Qty:                 10,
+				UOM:                 "Nos",
+				PostingDate:         "2026-03-15",
+				DocStatus:           1,
+				AccordFlowState:     "1",
+				AccordCustomerState: "1",
+			}, nil
+		},
+		createPartialDeliveryReturn: func(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string, qty float64) (erpnext.DeliveryNoteResult, error) {
+			returnAgainst = sourceName
+			returnedQty = qty
+			return erpnext.DeliveryNoteResult{Name: "RET-DN-0001"}, nil
+		},
+	}
+
+	auth := NewERPAuthenticator(
+		stub,
+		"http://erp.test",
+		"key",
+		"secret",
+		"Main - A",
+		"10",
+		"20",
+		"",
+		"",
+		"",
+		nil,
+		nil,
+	)
+
+	detail, err := auth.CustomerRespondDeliveryRequest(
+		context.Background(),
+		Principal{Role: RoleCustomer, Ref: "CUST-001"},
+		CustomerDeliveryResponseRequest{
+			DeliveryNoteID: "MAT-DN-0001",
+			Mode:           CustomerDeliveryResponseAcceptPartial,
+			AcceptedQty:    7,
+			ReturnedQty:    3,
+			Reason:         "Brak chiqdi",
+		},
+	)
+	if err != nil {
+		t.Fatalf("CustomerRespondDeliveryRequest() error = %v", err)
+	}
+	if returnAgainst != "MAT-DN-0001" {
+		t.Fatalf("expected partial return against MAT-DN-0001, got %q", returnAgainst)
+	}
+	if returnedQty != 3 {
+		t.Fatalf("expected partial return qty 3, got %.2f", returnedQty)
+	}
+	if detail.Record.Status != "partial" {
+		t.Fatalf("expected partial status, got %+v", detail.Record)
+	}
+	if detail.Record.AcceptedQty != 7 {
+		t.Fatalf("expected accepted qty 7, got %+v", detail.Record)
+	}
+}
+
+func TestCustomerClaimAfterAcceptCreatesReturnDeliveryNote(t *testing.T) {
+	var returnedQty float64
+
+	stub := &adminSuppliersERPStub{
+		getDeliveryNote: func(ctx context.Context, baseURL, apiKey, apiSecret, name string) (erpnext.DeliveryNoteDraft, error) {
+			return erpnext.DeliveryNoteDraft{
+				Name:                "MAT-DN-0001",
+				Customer:            "CUST-001",
+				CustomerName:        "Comfi",
+				ItemCode:            "ITEM-001",
+				ItemName:            "Chers",
+				Qty:                 10,
+				UOM:                 "Nos",
+				PostingDate:         "2026-03-15",
+				DocStatus:           1,
+				AccordFlowState:     "1",
+				AccordCustomerState: "3",
+			}, nil
+		},
+		createPartialDeliveryReturn: func(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string, qty float64) (erpnext.DeliveryNoteResult, error) {
+			returnedQty = qty
+			return erpnext.DeliveryNoteResult{Name: "RET-DN-0002"}, nil
+		},
+	}
+
+	auth := NewERPAuthenticator(
+		stub,
+		"http://erp.test",
+		"key",
+		"secret",
+		"Main - A",
+		"10",
+		"20",
+		"",
+		"",
+		"",
+		nil,
+		nil,
+	)
+
+	detail, err := auth.CustomerRespondDeliveryRequest(
+		context.Background(),
+		Principal{Role: RoleCustomer, Ref: "CUST-001"},
+		CustomerDeliveryResponseRequest{
+			DeliveryNoteID: "MAT-DN-0001",
+			Mode:           CustomerDeliveryResponseClaimAfterAccept,
+			ReturnedQty:    2,
+			Reason:         "Brak chiqdi",
+			Comment:        "Ikki dona siniq",
+		},
+	)
+	if err != nil {
+		t.Fatalf("CustomerRespondDeliveryRequest() error = %v", err)
+	}
+	if returnedQty != 2 {
+		t.Fatalf("expected claim return qty 2, got %.2f", returnedQty)
+	}
+	if detail.Record.Status != "partial" {
+		t.Fatalf("expected partial status after claim, got %+v", detail.Record)
+	}
+	if detail.Record.AcceptedQty != 8 {
+		t.Fatalf("expected accepted qty 8 after claim, got %+v", detail.Record)
 	}
 }
 

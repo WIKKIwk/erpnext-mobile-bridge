@@ -100,10 +100,21 @@ type CustomerHomeSummary struct {
 	RejectedCount  int `json:"rejected_count"`
 }
 
+type CustomerDeliveryResponseMode string
+
+const (
+	CustomerDeliveryResponseAcceptAll        CustomerDeliveryResponseMode = "accept_all"
+	CustomerDeliveryResponseAcceptPartial    CustomerDeliveryResponseMode = "accept_partial"
+	CustomerDeliveryResponseRejectAll        CustomerDeliveryResponseMode = "reject_all"
+	CustomerDeliveryResponseClaimAfterAccept CustomerDeliveryResponseMode = "claim_after_accept"
+)
+
 type CustomerDeliveryDetail struct {
-	Record     DispatchRecord `json:"record"`
-	CanApprove bool           `json:"can_approve"`
-	CanReject  bool           `json:"can_reject"`
+	Record             DispatchRecord `json:"record"`
+	CanApprove         bool           `json:"can_approve"`
+	CanReject          bool           `json:"can_reject"`
+	CanPartiallyAccept bool           `json:"can_partially_accept,omitempty"`
+	CanReportClaim     bool           `json:"can_report_claim,omitempty"`
 }
 
 type SupplierHomeSummary struct {
@@ -181,9 +192,13 @@ type SupplierUnannouncedResponseRequest struct {
 }
 
 type CustomerDeliveryResponseRequest struct {
-	DeliveryNoteID string `json:"delivery_note_id"`
-	Approve        bool   `json:"approve"`
-	Reason         string `json:"reason"`
+	DeliveryNoteID string                       `json:"delivery_note_id"`
+	Approve        *bool                        `json:"approve,omitempty"`
+	Mode           CustomerDeliveryResponseMode `json:"mode,omitempty"`
+	AcceptedQty    float64                      `json:"accepted_qty,omitempty"`
+	ReturnedQty    float64                      `json:"returned_qty,omitempty"`
+	Reason         string                       `json:"reason,omitempty"`
+	Comment        string                       `json:"comment,omitempty"`
 }
 
 type NotificationCommentCreateRequest struct {

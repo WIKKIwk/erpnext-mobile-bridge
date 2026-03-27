@@ -6,14 +6,18 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
 const (
-	compactCustomerDecisionPrefix      = "AC:"
-	compactCustomerReasonPrefix        = "AR:"
-	compactDeliveryLifecyclePrefix     = "AD:"
-	compactDeliveryActorPrefix         = "AA:"
+	compactCustomerDecisionPrefix  = "AC:"
+	compactCustomerReasonPrefix    = "AR:"
+	compactCustomerAcceptedPrefix  = "AQ:"
+	compactCustomerReturnedPrefix  = "AT:"
+	compactCustomerCommentPrefix   = "AX:"
+	compactDeliveryLifecyclePrefix = "AD:"
+	compactDeliveryActorPrefix     = "AA:"
 )
 
 func (c *Client) SearchCompanies(ctx context.Context, baseURL, apiKey, apiSecret string, limit int) ([]Company, error) {
@@ -148,6 +152,17 @@ func (c *Client) CreateAndSubmitDeliveryNote(ctx context.Context, baseURL, apiKe
 }
 
 func (c *Client) CreateAndSubmitDeliveryNoteReturn(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string) (DeliveryNoteResult, error) {
+	return c.createAndSubmitDeliveryNoteReturnWithQty(ctx, baseURL, apiKey, apiSecret, sourceName, 0)
+}
+
+func (c *Client) CreateAndSubmitPartialDeliveryNoteReturn(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string, returnedQty float64) (DeliveryNoteResult, error) {
+	if returnedQty <= 0 {
+		return DeliveryNoteResult{}, fmt.Errorf("returned qty must be greater than 0")
+	}
+	return c.createAndSubmitDeliveryNoteReturnWithQty(ctx, baseURL, apiKey, apiSecret, sourceName, returnedQty)
+}
+
+func (c *Client) createAndSubmitDeliveryNoteReturnWithQty(ctx context.Context, baseURL, apiKey, apiSecret, sourceName string, returnedQty float64) (DeliveryNoteResult, error) {
 	normalized, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return DeliveryNoteResult{}, err
@@ -162,6 +177,11 @@ func (c *Client) CreateAndSubmitDeliveryNoteReturn(ctx context.Context, baseURL,
 	}
 	if len(mapped.Message) == 0 {
 		return DeliveryNoteResult{}, fmt.Errorf("delivery note return mapping returned empty document")
+	}
+	if returnedQty > 0 {
+		if err := applyPartialDeliveryReturnQty(mapped.Message, returnedQty); err != nil {
+			return DeliveryNoteResult{}, err
+		}
 	}
 
 	insertEndpoint := normalized + "/api/method/frappe.client.insert"
@@ -203,18 +223,33 @@ func (c *Client) CreateAndSubmitDeliveryNoteReturn(ctx context.Context, baseURL,
 	return DeliveryNoteResult{Name: name}, nil
 }
 
+func applyPartialDeliveryReturnQty(doc map[string]interface{}, returnedQty float64) error {
+	items, ok := doc["items"].([]interface{})
+	if !ok || len(items) == 0 {
+		return fmt.Errorf("delivery note return document has no items")
+	}
+	firstItem, ok := items[0].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("delivery note return item has invalid shape")
+	}
+	firstItem["qty"] = -returnedQty
+	items[0] = firstItem
+	doc["items"] = items
+	return nil
+}
+
 func (c *Client) EnsureDeliveryNoteStateFields(ctx context.Context, baseURL, apiKey, apiSecret string) error {
 	normalized, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return err
 	}
 	required := []struct {
-		fieldname string
-		label     string
-		fieldtype string
+		fieldname   string
+		label       string
+		fieldtype   string
 		insertAfter string
-		options   string
-		hidden    int
+		options     string
+		hidden      int
 	}{
 		{"accord_flow_state", "Accord Flow State", "Int", "remarks", "", 1},
 		{"accord_customer_state", "Accord Customer State", "Int", "accord_flow_state", "", 1},
@@ -501,15 +536,22 @@ func mapDeliveryNoteDraft(doc map[string]interface{}) (DeliveryNoteDraft, error)
 }
 
 func UpsertCustomerDecisionInRemarks(existingNote, state, reason string) string {
+	return UpsertCustomerDecisionPayloadInRemarks(existingNote, state, reason, 0, 0, "", "")
+}
+
+func UpsertCustomerDecisionPayloadInRemarks(existingNote, state, reason string, acceptedQty, returnedQty float64, uom, comment string) string {
 	lines := strings.Split(strings.ReplaceAll(existingNote, "\r\n", "\n"), "\n")
-	filtered := make([]string, 0, len(lines)+2)
+	filtered := make([]string, 0, len(lines)+5)
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
 		if strings.HasPrefix(trimmed, compactCustomerDecisionPrefix) ||
-			strings.HasPrefix(trimmed, compactCustomerReasonPrefix) {
+			strings.HasPrefix(trimmed, compactCustomerReasonPrefix) ||
+			strings.HasPrefix(trimmed, compactCustomerAcceptedPrefix) ||
+			strings.HasPrefix(trimmed, compactCustomerReturnedPrefix) ||
+			strings.HasPrefix(trimmed, compactCustomerCommentPrefix) {
 			continue
 		}
 		filtered = append(filtered, trimmed)
@@ -519,6 +561,15 @@ func UpsertCustomerDecisionInRemarks(existingNote, state, reason string) string 
 	}
 	if strings.TrimSpace(reason) != "" {
 		filtered = append(filtered, compactCustomerReasonPrefix+strings.TrimSpace(reason))
+	}
+	if acceptedQty > 0 {
+		filtered = append(filtered, fmt.Sprintf("%s%.4f %s", compactCustomerAcceptedPrefix, acceptedQty, strings.TrimSpace(uom)))
+	}
+	if returnedQty > 0 {
+		filtered = append(filtered, fmt.Sprintf("%s%.4f %s", compactCustomerReturnedPrefix, returnedQty, strings.TrimSpace(uom)))
+	}
+	if strings.TrimSpace(comment) != "" {
+		filtered = append(filtered, compactCustomerCommentPrefix+strings.TrimSpace(comment))
 	}
 	return strings.Join(filtered, "\n")
 }
@@ -543,6 +594,39 @@ func ExtractCustomerDecisionReason(remarks string) string {
 		}
 	}
 	return ""
+}
+
+func ExtractCustomerDecisionComment(remarks string) string {
+	lines := strings.Split(strings.ReplaceAll(remarks, "\r\n", "\n"), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, compactCustomerCommentPrefix) {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, compactCustomerCommentPrefix))
+		}
+	}
+	return ""
+}
+
+func ExtractCustomerDecisionQuantities(remarks string) (acceptedQty, returnedQty float64) {
+	lines := strings.Split(strings.ReplaceAll(remarks, "\r\n", "\n"), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, compactCustomerAcceptedPrefix):
+			value := strings.TrimSpace(strings.TrimPrefix(trimmed, compactCustomerAcceptedPrefix))
+			fields := strings.Fields(value)
+			if len(fields) > 0 {
+				acceptedQty, _ = strconv.ParseFloat(fields[0], 64)
+			}
+		case strings.HasPrefix(trimmed, compactCustomerReturnedPrefix):
+			value := strings.TrimSpace(strings.TrimPrefix(trimmed, compactCustomerReturnedPrefix))
+			fields := strings.Fields(value)
+			if len(fields) > 0 {
+				returnedQty, _ = strconv.ParseFloat(fields[0], 64)
+			}
+		}
+	}
+	return acceptedQty, returnedQty
 }
 
 func BuildDeliveryLifecycleComment(state, actor string) string {
@@ -573,6 +657,8 @@ func normalizeCustomerDecisionState(state string) string {
 		return "pending"
 	case "confirmed", "accepted", "cf":
 		return "confirmed"
+	case "partial", "pt":
+		return "partial"
 	case "rejected", "rj":
 		return "rejected"
 	default:
