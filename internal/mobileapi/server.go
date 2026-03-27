@@ -572,6 +572,7 @@ func (s *Server) handleCustomerSummary(w http.ResponseWriter, r *http.Request) {
 
 	summary, err := s.auth.CustomerSummary(r.Context(), principal)
 	if err != nil {
+		log.Printf("customer summary failed for ref=%s err=%v", strings.TrimSpace(principal.Ref), err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "customer summary failed"})
 		return
 	}
@@ -590,6 +591,7 @@ func (s *Server) handleCustomerHistory(w http.ResponseWriter, r *http.Request) {
 
 	items, err := s.auth.CustomerHistory(r.Context(), principal)
 	if err != nil {
+		log.Printf("customer history failed for ref=%s err=%v", strings.TrimSpace(principal.Ref), err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "customer history failed"})
 		return
 	}
@@ -609,6 +611,7 @@ func (s *Server) handleCustomerStatusDetails(w http.ResponseWriter, r *http.Requ
 	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
 	items, err := s.auth.CustomerStatusDetails(r.Context(), principal, kind)
 	if err != nil {
+		log.Printf("customer status details failed for ref=%s kind=%s err=%v", strings.TrimSpace(principal.Ref), kind, err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "customer status details failed"})
 		return
 	}

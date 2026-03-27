@@ -275,21 +275,69 @@ func (c *Client) EnsureDeliveryNoteStateFields(ctx context.Context, baseURL, api
 	params.Set("limit_page_length", "20")
 	var payload struct {
 		Data []struct {
-			Name      string `json:"name"`
-			Fieldname string `json:"fieldname"`
+			Name          string `json:"name"`
+			Fieldname     string `json:"fieldname"`
+			Label         string `json:"label"`
+			Fieldtype     string `json:"fieldtype"`
+			InsertAfter   string `json:"insert_after"`
+			Hidden        int    `json:"hidden"`
+			ReadOnly      int    `json:"read_only"`
+			AllowOnSubmit int    `json:"allow_on_submit"`
+			NoCopy        int    `json:"no_copy"`
+			Options       string `json:"options"`
 		} `json:"data"`
 	}
 	endpoint := normalized + "/api/resource/Custom%20Field?" + params.Encode()
 	if err := c.doJSON(ctx, endpoint, apiKey, apiSecret, &payload); err != nil {
 		return err
 	}
-	existing := map[string]string{}
+	existing := map[string]struct {
+		name          string
+		label         string
+		fieldtype     string
+		insertAfter   string
+		hidden        int
+		readOnly      int
+		allowOnSubmit int
+		noCopy        int
+		options       string
+	}{}
 	for _, row := range payload.Data {
-		existing[strings.TrimSpace(row.Fieldname)] = strings.TrimSpace(row.Name)
+		existing[strings.TrimSpace(row.Fieldname)] = struct {
+			name          string
+			label         string
+			fieldtype     string
+			insertAfter   string
+			hidden        int
+			readOnly      int
+			allowOnSubmit int
+			noCopy        int
+			options       string
+		}{
+			name:          strings.TrimSpace(row.Name),
+			label:         strings.TrimSpace(row.Label),
+			fieldtype:     strings.TrimSpace(row.Fieldtype),
+			insertAfter:   strings.TrimSpace(row.InsertAfter),
+			hidden:        row.Hidden,
+			readOnly:      row.ReadOnly,
+			allowOnSubmit: row.AllowOnSubmit,
+			noCopy:        row.NoCopy,
+			options:       strings.TrimSpace(row.Options),
+		}
 	}
 	for _, field := range required {
-		if existingName, ok := existing[field.fieldname]; ok {
-			updateEndpoint := normalized + "/api/resource/Custom%20Field/" + url.PathEscape(existingName)
+		if existingField, ok := existing[field.fieldname]; ok {
+			if existingField.label == strings.TrimSpace(field.label) &&
+				existingField.fieldtype == strings.TrimSpace(field.fieldtype) &&
+				existingField.insertAfter == strings.TrimSpace(field.insertAfter) &&
+				existingField.hidden == field.hidden &&
+				existingField.readOnly == 1 &&
+				existingField.allowOnSubmit == 1 &&
+				existingField.noCopy == 1 &&
+				existingField.options == strings.TrimSpace(field.options) {
+				continue
+			}
+			updateEndpoint := normalized + "/api/resource/Custom%20Field/" + url.PathEscape(existingField.name)
 			body := map[string]interface{}{
 				"label":           field.label,
 				"fieldtype":       field.fieldtype,
@@ -449,9 +497,6 @@ func (c *Client) ListCustomerDeliveryNotes(ctx context.Context, baseURL, apiKey,
 }
 
 func (c *Client) ListCustomerDeliveryNotesPage(ctx context.Context, baseURL, apiKey, apiSecret, customer string, limit, offset int) ([]DeliveryNoteDraft, error) {
-	if err := c.EnsureDeliveryNoteStateFields(ctx, baseURL, apiKey, apiSecret); err != nil {
-		return nil, err
-	}
 	normalized, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -502,9 +547,6 @@ func (c *Client) ListCustomerDeliveryNotesPage(ctx context.Context, baseURL, api
 }
 
 func (c *Client) GetDeliveryNote(ctx context.Context, baseURL, apiKey, apiSecret, name string) (DeliveryNoteDraft, error) {
-	if err := c.EnsureDeliveryNoteStateFields(ctx, baseURL, apiKey, apiSecret); err != nil {
-		return DeliveryNoteDraft{}, err
-	}
 	normalized, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return DeliveryNoteDraft{}, err
