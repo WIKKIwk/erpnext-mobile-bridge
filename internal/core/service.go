@@ -2572,6 +2572,9 @@ func mapDeliveryNoteToDispatchRecord(item erpnext.DeliveryNoteDraft) DispatchRec
 
 func customerDecisionQuantities(item erpnext.DeliveryNoteDraft, status string) (acceptedQty, returnedQty float64) {
 	acceptedQty, returnedQty = erpnext.ExtractCustomerDecisionQuantities(item.Remarks)
+	if returnedQty <= 0 && item.ReturnedQty > 0 {
+		returnedQty = item.ReturnedQty
+	}
 	switch status {
 	case "accepted":
 		if acceptedQty <= 0 {

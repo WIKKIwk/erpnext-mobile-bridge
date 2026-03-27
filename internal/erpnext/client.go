@@ -112,6 +112,7 @@ type DeliveryNoteDraft struct {
 	ItemCode             string
 	ItemName             string
 	Qty                  float64
+	ReturnedQty          float64
 	UOM                  string
 	PostingDate          string
 	Modified             string

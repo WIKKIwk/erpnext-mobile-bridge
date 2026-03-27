@@ -543,6 +543,7 @@ func mapDeliveryNoteDraft(doc map[string]interface{}) (DeliveryNoteDraft, error)
 	result.ItemCode = getStringValue(firstItem["item_code"])
 	result.ItemName = getStringValue(firstItem["item_name"])
 	result.Qty = getFloatValue(firstItem["qty"])
+	result.ReturnedQty = getFloatValue(firstItem["returned_qty"])
 	result.UOM = getStringValue(firstItem["uom"])
 	if result.UOM == "" {
 		result.UOM = getStringValue(firstItem["stock_uom"])

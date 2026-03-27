@@ -108,6 +108,31 @@ func TestBuildCustomerDeliveryResultEventPartial(t *testing.T) {
 	}
 }
 
+func TestMapDeliveryNoteToDispatchRecordPartialFallsBackToReturnedQty(t *testing.T) {
+	item := erpnext.DeliveryNoteDraft{
+		Name:                "MAT-DN-0005",
+		Customer:            "CUST-001",
+		CustomerName:        "Comfi",
+		ItemCode:            "ITEM-005",
+		ItemName:            "Yashil",
+		Qty:                 5,
+		ReturnedQty:         2,
+		UOM:                 "Kg",
+		PostingDate:         "2026-03-14",
+		DocStatus:           1,
+		AccordFlowState:     "1",
+		AccordCustomerState: "4",
+	}
+
+	record := mapDeliveryNoteToDispatchRecord(item)
+	if record.Status != "partial" {
+		t.Fatalf("unexpected status: %+v", record)
+	}
+	if record.AcceptedQty != 3 {
+		t.Fatalf("expected accepted qty 3, got %+v", record)
+	}
+}
+
 func TestBuildCustomerDeliveryResultEventSkipsPending(t *testing.T) {
 	item := erpnext.DeliveryNoteDraft{
 		Name:         "MAT-DN-0003",
