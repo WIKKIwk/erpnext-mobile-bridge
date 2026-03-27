@@ -110,6 +110,10 @@ func (s *adminSuppliersERPStub) ListCustomerItems(ctx context.Context, baseURL, 
 	return nil, nil
 }
 
+func (s *adminSuppliersERPStub) GetItemCustomerAssignment(ctx context.Context, baseURL, apiKey, apiSecret, itemCode string) (erpnext.ItemCustomerAssignment, error) {
+	return erpnext.ItemCustomerAssignment{}, nil
+}
+
 func (s *adminSuppliersERPStub) ListCustomerDeliveryNotes(ctx context.Context, baseURL, apiKey, apiSecret, customer string, limit int) ([]erpnext.DeliveryNoteDraft, error) {
 	return nil, nil
 }
@@ -317,16 +321,16 @@ func TestNotificationDetailSupportsCustomerDeliveryResultEvents(t *testing.T) {
 	stub := &adminSuppliersERPStub{
 		getDeliveryNote: func(ctx context.Context, baseURL, apiKey, apiSecret, name string) (erpnext.DeliveryNoteDraft, error) {
 			return erpnext.DeliveryNoteDraft{
-				Name:         "MAT-DN-0001",
-				Customer:     "CUST-001",
-				CustomerName: "Comfi",
-				ItemCode:     "ITEM-001",
-				ItemName:     "Chers",
-				Qty:          3,
-				UOM:          "Nos",
-				PostingDate:  "2026-03-15",
-				DocStatus:    1,
-				AccordFlowState:    "1",
+				Name:                "MAT-DN-0001",
+				Customer:            "CUST-001",
+				CustomerName:        "Comfi",
+				ItemCode:            "ITEM-001",
+				ItemName:            "Chers",
+				Qty:                 3,
+				UOM:                 "Nos",
+				PostingDate:         "2026-03-15",
+				DocStatus:           1,
+				AccordFlowState:     "1",
 				AccordCustomerState: "3",
 			}, nil
 		},
@@ -637,17 +641,17 @@ func TestCustomerCanAddCommentToCustomerDeliveryResultEvent(t *testing.T) {
 	stub := &adminSuppliersERPStub{
 		getDeliveryNote: func(ctx context.Context, baseURL, apiKey, apiSecret, name string) (erpnext.DeliveryNoteDraft, error) {
 			return erpnext.DeliveryNoteDraft{
-				Name:                "MAT-DN-0001",
-				Customer:            "CUST-001",
-				CustomerName:        "Comfi",
-				ItemCode:            "ITEM-001",
-				ItemName:            "Chers",
-				Qty:                 3,
-				UOM:                 "Nos",
-				PostingDate:         "2026-03-15",
-				DocStatus:           1,
-				AccordFlowState:     "1",
-				AccordCustomerState: "2",
+				Name:                 "MAT-DN-0001",
+				Customer:             "CUST-001",
+				CustomerName:         "Comfi",
+				ItemCode:             "ITEM-001",
+				ItemName:             "Chers",
+				Qty:                  3,
+				UOM:                  "Nos",
+				PostingDate:          "2026-03-15",
+				DocStatus:            1,
+				AccordFlowState:      "1",
+				AccordCustomerState:  "2",
 				AccordCustomerReason: "Noto'g'ri mahsulot",
 			}, nil
 		},

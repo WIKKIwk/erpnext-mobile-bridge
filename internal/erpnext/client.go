@@ -24,6 +24,13 @@ type Item struct {
 	UOM  string
 }
 
+type ItemCustomerAssignment struct {
+	Code         string
+	Name         string
+	UOM          string
+	CustomerRefs []string
+}
+
 type CreateItemInput struct {
 	Code string
 	Name string
@@ -91,31 +98,31 @@ type DeliveryNoteResult struct {
 }
 
 type DeliveryNoteStateUpdate struct {
-	FlowState     string
-	CustomerState string
+	FlowState      string
+	CustomerState  string
 	CustomerReason string
-	DeliveryActor string
-	UIStatus      string
+	DeliveryActor  string
+	UIStatus       string
 }
 
 type DeliveryNoteDraft struct {
-	Name               string
-	Customer           string
-	CustomerName       string
-	ItemCode           string
-	ItemName           string
-	Qty                float64
-	UOM                string
-	PostingDate        string
-	Modified           string
-	Status             string
-	DocStatus          int
-	Remarks            string
-	AccordFlowState    string
-	AccordCustomerState string
+	Name                 string
+	Customer             string
+	CustomerName         string
+	ItemCode             string
+	ItemName             string
+	Qty                  float64
+	UOM                  string
+	PostingDate          string
+	Modified             string
+	Status               string
+	DocStatus            int
+	Remarks              string
+	AccordFlowState      string
+	AccordCustomerState  string
 	AccordCustomerReason string
-	AccordDeliveryActor string
-	AccordUIStatus     string
+	AccordDeliveryActor  string
+	AccordUIStatus       string
 }
 
 type Client struct {

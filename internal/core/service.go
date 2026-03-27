@@ -68,6 +68,7 @@ type ERPClient interface {
 	AssignSupplierToItem(ctx context.Context, baseURL, apiKey, apiSecret, itemCode, supplier string) error
 	RemoveSupplierFromItem(ctx context.Context, baseURL, apiKey, apiSecret, itemCode, supplier string) error
 	ListCustomerItems(ctx context.Context, baseURL, apiKey, apiSecret, customerRef, query string, limit int) ([]erpnext.Item, error)
+	GetItemCustomerAssignment(ctx context.Context, baseURL, apiKey, apiSecret, itemCode string) (erpnext.ItemCustomerAssignment, error)
 	AssignCustomerToItem(ctx context.Context, baseURL, apiKey, apiSecret, itemCode, customerRef string) error
 	RemoveCustomerFromItem(ctx context.Context, baseURL, apiKey, apiSecret, itemCode, customerRef string) error
 	ListCustomerDeliveryNotes(ctx context.Context, baseURL, apiKey, apiSecret, customer string, limit int) ([]erpnext.DeliveryNoteDraft, error)
@@ -1221,31 +1222,53 @@ func (a *ERPAuthenticator) WerkaCustomerItemOptions(ctx context.Context, query s
 	if err != nil {
 		return nil, err
 	}
+	customerByRef := make(map[string]erpnext.Customer, len(customers))
+	for _, customer := range customers {
+		ref := strings.TrimSpace(customer.ID)
+		if ref == "" {
+			continue
+		}
+		customerByRef[ref] = customer
+	}
 
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	result := make([]CustomerItemOption, 0, 64)
 	seen := make(map[string]struct{})
-
-	for _, customer := range customers {
-		itemQuery := strings.TrimSpace(query)
-		if normalizedQuery != "" {
-			customerMatches := strings.Contains(strings.ToLower(strings.TrimSpace(customer.Name)), normalizedQuery) ||
-				strings.Contains(strings.ToLower(strings.TrimSpace(customer.Phone)), normalizedQuery) ||
-				strings.Contains(strings.ToLower(strings.TrimSpace(customer.ID)), normalizedQuery)
-			if customerMatches {
-				itemQuery = ""
+	searchLimit := limit
+	if searchLimit <= 0 {
+		searchLimit = 100
+	}
+	if searchLimit > 200 {
+		searchLimit = 200
+	}
+	candidates, err := a.erp.SearchItems(ctx, a.baseURL, a.apiKey, a.apiSecret, query, searchLimit)
+	if err != nil {
+		return nil, err
+	}
+	mapped, err := a.mapSupplierItems(ctx, candidates)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range mapped {
+		assignment, err := a.erp.GetItemCustomerAssignment(ctx, a.baseURL, a.apiKey, a.apiSecret, item.Code)
+		if err != nil {
+			return nil, err
+		}
+		for _, customerRef := range assignment.CustomerRefs {
+			customer, ok := customerByRef[strings.TrimSpace(customerRef)]
+			if !ok {
+				continue
 			}
-		}
-
-		items, err := a.erp.ListCustomerItems(ctx, a.baseURL, a.apiKey, a.apiSecret, customer.ID, itemQuery, limit)
-		if err != nil {
-			return nil, err
-		}
-		mapped, err := a.mapSupplierItems(ctx, items)
-		if err != nil {
-			return nil, err
-		}
-		for _, item := range mapped {
+			if normalizedQuery != "" {
+				customerMatches := strings.Contains(strings.ToLower(strings.TrimSpace(customer.Name)), normalizedQuery) ||
+					strings.Contains(strings.ToLower(strings.TrimSpace(customer.Phone)), normalizedQuery) ||
+					strings.Contains(strings.ToLower(strings.TrimSpace(customer.ID)), normalizedQuery)
+				itemMatches := strings.Contains(strings.ToLower(strings.TrimSpace(item.Name)), normalizedQuery) ||
+					strings.Contains(strings.ToLower(strings.TrimSpace(item.Code)), normalizedQuery)
+				if !customerMatches && !itemMatches {
+					continue
+				}
+			}
 			key := strings.TrimSpace(customer.ID) + "|" + strings.TrimSpace(item.Code)
 			if _, ok := seen[key]; ok {
 				continue

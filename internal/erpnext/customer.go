@@ -330,13 +330,53 @@ func (c *Client) RemoveCustomerFromItem(ctx context.Context, baseURL, apiKey, ap
 	}, nil)
 }
 
+func (c *Client) GetItemCustomerAssignment(ctx context.Context, baseURL, apiKey, apiSecret, itemCode string) (ItemCustomerAssignment, error) {
+	normalized, err := normalizeBaseURL(baseURL)
+	if err != nil {
+		return ItemCustomerAssignment{}, err
+	}
+	endpoint := normalized + "/api/resource/Item/" + url.PathEscape(strings.TrimSpace(itemCode))
+	var payload struct {
+		Data struct {
+			ItemCode      string `json:"item_code"`
+			ItemName      string `json:"item_name"`
+			StockUOM      string `json:"stock_uom"`
+			CustomerItems []struct {
+				CustomerName string `json:"customer_name"`
+			} `json:"customer_items"`
+		} `json:"data"`
+	}
+	if err := c.doJSON(ctx, endpoint, apiKey, apiSecret, &payload); err != nil {
+		return ItemCustomerAssignment{}, err
+	}
+	refs := make([]string, 0, len(payload.Data.CustomerItems))
+	seen := make(map[string]struct{}, len(payload.Data.CustomerItems))
+	for _, row := range payload.Data.CustomerItems {
+		ref := strings.TrimSpace(row.CustomerName)
+		if ref == "" {
+			continue
+		}
+		if _, ok := seen[ref]; ok {
+			continue
+		}
+		seen[ref] = struct{}{}
+		refs = append(refs, ref)
+	}
+	return ItemCustomerAssignment{
+		Code:         strings.TrimSpace(payload.Data.ItemCode),
+		Name:         strings.TrimSpace(payload.Data.ItemName),
+		UOM:          strings.TrimSpace(payload.Data.StockUOM),
+		CustomerRefs: refs,
+	}, nil
+}
+
 func (c *Client) itemMatchesCustomer(ctx context.Context, normalized, apiKey, apiSecret, itemCode string, customerKeys map[string]struct{}) (bool, Item, error) {
 	endpoint := normalized + "/api/resource/Item/" + url.PathEscape(strings.TrimSpace(itemCode))
 	var payload struct {
 		Data struct {
-			ItemCode    string `json:"item_code"`
-			ItemName    string `json:"item_name"`
-			StockUOM    string `json:"stock_uom"`
+			ItemCode      string `json:"item_code"`
+			ItemName      string `json:"item_name"`
+			StockUOM      string `json:"stock_uom"`
 			CustomerItems []struct {
 				CustomerName string `json:"customer_name"`
 			} `json:"customer_items"`
