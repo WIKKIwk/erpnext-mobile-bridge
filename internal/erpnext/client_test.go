@@ -205,6 +205,39 @@ func TestSearchSupplierItems(t *testing.T) {
 	}
 }
 
+func TestCreateItemUsesProvidedItemGroup(t *testing.T) {
+	var body map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/resource/Item" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		_, _ = w.Write([]byte(`{"data":{"name":"ITEM-NEW","item_name":"Test Item","stock_uom":"Kg"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(&http.Client{Timeout: 3 * time.Second})
+	item, err := client.CreateItem(context.Background(), server.URL, "key", "secret", CreateItemInput{
+		Code:      "ITEM-NEW",
+		Name:      "Test Item",
+		UOM:       "Kg",
+		ItemGroup: "Tayyor mahsulot",
+	})
+	if err != nil {
+		t.Fatalf("CreateItem() error = %v", err)
+	}
+	if item.Code != "ITEM-NEW" {
+		t.Fatalf("unexpected item: %+v", item)
+	}
+	if got := body["item_group"]; got != "Tayyor mahsulot" {
+		t.Fatalf("expected item_group Tayyor mahsulot, got %+v", got)
+	}
+}
+
 func TestListPurchaseReceiptCommentsBatch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/resource/Comment" {

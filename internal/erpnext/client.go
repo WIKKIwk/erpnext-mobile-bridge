@@ -32,9 +32,10 @@ type ItemCustomerAssignment struct {
 }
 
 type CreateItemInput struct {
-	Code string
-	Name string
-	UOM  string
+	Code      string
+	Name      string
+	UOM       string
+	ItemGroup string
 }
 
 type Warehouse struct {
@@ -204,13 +205,17 @@ func (c *Client) CreateItem(ctx context.Context, baseURL, apiKey, apiSecret stri
 	if uom == "" {
 		uom = "Nos"
 	}
+	itemGroup := strings.TrimSpace(input.ItemGroup)
+	if itemGroup == "" {
+		itemGroup = "All Item Groups"
+	}
 
 	payload := map[string]interface{}{
 		"item_code":     code,
 		"item_name":     name,
 		"stock_uom":     uom,
 		"is_stock_item": 1,
-		"item_group":    "All Item Groups",
+		"item_group":    itemGroup,
 	}
 
 	var response struct {
