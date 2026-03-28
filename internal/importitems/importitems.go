@@ -15,6 +15,7 @@ import (
 type ERP interface {
 	SearchCustomers(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Customer, error)
 	GetItemsByCodes(ctx context.Context, baseURL, apiKey, apiSecret string, itemCodes []string) ([]erpnext.Item, error)
+	GetItemCustomerAssignment(ctx context.Context, baseURL, apiKey, apiSecret, itemCode string) (erpnext.ItemCustomerAssignment, error)
 	CreateItem(ctx context.Context, baseURL, apiKey, apiSecret string, input erpnext.CreateItemInput) (erpnext.Item, error)
 	AssignCustomerToItem(ctx context.Context, baseURL, apiKey, apiSecret, itemCode, customerRef string) error
 }
@@ -76,6 +77,10 @@ func Run(ctx context.Context, erp ERP, out io.Writer, opts Options) (Result, err
 		ItemsFound:   len(names),
 	}
 
+	if err := preflightAssignments(ctx, erp, opts, customer.ID, names); err != nil {
+		return result, err
+	}
+
 	for _, name := range names {
 		itemCode := strings.TrimSpace(name)
 		existing, err := erp.GetItemsByCodes(ctx, opts.BaseURL, opts.APIKey, opts.APISecret, []string{itemCode})
@@ -124,6 +129,38 @@ func Run(ctx context.Context, erp ERP, out io.Writer, opts Options) (Result, err
 	return result, nil
 }
 
+func preflightAssignments(ctx context.Context, erp ERP, opts Options, targetCustomerID string, names []string) error {
+	for _, name := range names {
+		itemCode := strings.TrimSpace(name)
+		existing, err := erp.GetItemsByCodes(ctx, opts.BaseURL, opts.APIKey, opts.APISecret, []string{itemCode})
+		if err != nil {
+			return err
+		}
+		if len(existing) == 0 {
+			continue
+		}
+		assignment, err := erp.GetItemCustomerAssignment(ctx, opts.BaseURL, opts.APIKey, opts.APISecret, itemCode)
+		if err != nil {
+			return err
+		}
+		conflicts := make([]string, 0, len(assignment.CustomerRefs))
+		for _, ref := range assignment.CustomerRefs {
+			trimmed := strings.TrimSpace(ref)
+			if trimmed == "" {
+				continue
+			}
+			if strings.EqualFold(trimmed, strings.TrimSpace(targetCustomerID)) {
+				continue
+			}
+			conflicts = append(conflicts, trimmed)
+		}
+		if len(conflicts) > 0 {
+			return fmt.Errorf("item %q already linked to customer(s): %s", itemCode, strings.Join(conflicts, ", "))
+		}
+	}
+	return nil
+}
+
 func resolveCustomer(ctx context.Context, erp ERP, opts Options) (erpnext.Customer, error) {
 	query := strings.TrimSpace(opts.Customer)
 	customers, err := erp.SearchCustomers(ctx, opts.BaseURL, opts.APIKey, opts.APISecret, query, 100)
@@ -148,25 +185,26 @@ func resolveCustomer(ctx context.Context, erp ERP, opts Options) (erpnext.Custom
 }
 
 func loadNamesFromCSV(path, column string) ([]string, int, int, error) {
-	file, err := os.Open(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, -1, 0, err
 	}
-	defer file.Close()
+	if len(raw) == 0 {
+		return nil, -1, 0, fmt.Errorf("csv is empty")
+	}
+	if strings.TrimSpace(column) == "" && looksLikeLineList(raw) {
+		return loadNamesFromLineList(raw)
+	}
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, -1, 0, err
-	}
 	comma := ','
-	firstLine := string(data)
+	firstLine := string(raw)
 	if idx := strings.IndexByte(firstLine, '\n'); idx >= 0 {
 		firstLine = firstLine[:idx]
 	}
 	if strings.Count(firstLine, ";") > strings.Count(firstLine, ",") {
 		comma = ';'
 	}
-	reader := csv.NewReader(strings.NewReader(string(data)))
+	reader := csv.NewReader(strings.NewReader(string(raw)))
 	reader.Comma = comma
 	reader.TrimLeadingSpace = true
 	rows, err := reader.ReadAll()
@@ -206,6 +244,60 @@ func loadNamesFromCSV(path, column string) ([]string, int, int, error) {
 		return nil, colIndex, rowsRead, fmt.Errorf("csv produced no item names")
 	}
 	return names, colIndex, rowsRead, nil
+}
+
+func looksLikeLineList(raw []byte) bool {
+	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	headerNames := []string{"name", "item_name", "mahsulot", "product", "item"}
+	first := strings.ToLower(strings.TrimSpace(lines[0]))
+	for _, header := range headerNames {
+		if first == header {
+			return false
+		}
+	}
+	nonEmpty := 0
+	containsSemicolon := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		nonEmpty++
+		if strings.Contains(trimmed, ";") {
+			containsSemicolon = true
+		}
+	}
+	if nonEmpty == 0 {
+		return false
+	}
+	return !containsSemicolon
+}
+
+func loadNamesFromLineList(raw []byte) ([]string, int, int, error) {
+	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	seen := map[string]struct{}{}
+	names := make([]string, 0, len(lines))
+	rowsRead := 0
+	for _, line := range lines {
+		value := strings.TrimSpace(line)
+		if value == "" {
+			continue
+		}
+		rowsRead++
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		names = append(names, value)
+	}
+	if len(names) == 0 {
+		return nil, 0, rowsRead, fmt.Errorf("csv produced no item names")
+	}
+	return names, 0, rowsRead, nil
 }
 
 func detectColumn(rows [][]string, requested string) (index int, skipFirst bool, err error) {
