@@ -77,6 +77,7 @@ const (
 	customerStateRejectedDB      = 2
 	customerStateConfirmedDB     = 3
 	customerStatePartialDB       = 4
+	supplierAckEventPrefixDB     = "supplier_ack:"
 )
 
 func ConfigFromSiteConfig(siteConfigPath, defaultWarehouse string) (Config, error) {
@@ -612,6 +613,38 @@ func (r *Reader) CustomerSummary(ctx context.Context, customerRef string) (core.
 	return summary, nil
 }
 
+func (r *Reader) WerkaHistory(ctx context.Context) ([]core.DispatchRecord, error) {
+	receipts, err := r.telegramReceiptRows(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	result := make([]core.DispatchRecord, 0, len(receipts))
+	for _, row := range receipts {
+		record := purchaseReceiptRowToDispatchRecord(row)
+		if record.EventType == "werka_unannounced_pending" {
+			continue
+		}
+		result = append(result, record)
+	}
+
+	acks, err := r.supplierAckEvents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result = append(result, acks...)
+
+	customerEvents, err := r.customerResultEvents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result = append(result, customerEvents...)
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedLabel > result[j].CreatedLabel
+	})
+	return result, nil
+}
+
 func (r *Reader) telegramReceiptRows(ctx context.Context, supplierRef string) ([]purchaseReceiptSummaryRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
@@ -713,6 +746,86 @@ func (r *Reader) deliveryNoteRows(ctx context.Context, customerRef string) ([]de
 	return result, rows.Err()
 }
 
+func (r *Reader) supplierAckEvents(ctx context.Context) ([]core.DispatchRecord, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			c.name,
+			COALESCE(CAST(c.creation AS CHAR), ''),
+			pr.supplier,
+			COALESCE(pr.supplier_name, ''),
+			COALESCE(pr.total_qty, 0),
+			COALESCE(pri.item_code, ''),
+			COALESCE(pri.item_name, ''),
+			COALESCE(pri.uom, '')
+		FROM `+"`tabComment`"+` c
+		INNER JOIN `+"`tabPurchase Receipt`"+` pr ON pr.name = c.reference_name
+		LEFT JOIN `+"`tabPurchase Receipt Item`"+` pri ON pri.parent = pr.name AND pri.idx = 1
+		WHERE c.reference_doctype = 'Purchase Receipt'
+		  AND c.content LIKE 'Supplier%'
+		  AND c.content LIKE '%Tasdiqlayman%'`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]core.DispatchRecord, 0, 32)
+	for rows.Next() {
+		var (
+			commentID    string
+			createdLabel string
+			supplierRef  string
+			supplierName string
+			sentQty      float64
+			itemCode     string
+			itemName     string
+			uom          string
+		)
+		if err := rows.Scan(
+			&commentID,
+			&createdLabel,
+			&supplierRef,
+			&supplierName,
+			&sentQty,
+			&itemCode,
+			&itemName,
+			&uom,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, core.DispatchRecord{
+			ID:           supplierAckEventPrefixDB + commentID,
+			SupplierRef:  strings.TrimSpace(supplierRef),
+			SupplierName: strings.TrimSpace(supplierName),
+			ItemCode:     strings.TrimSpace(itemCode),
+			ItemName:     strings.TrimSpace(itemName),
+			UOM:          strings.TrimSpace(uom),
+			SentQty:      sentQty,
+			AcceptedQty:  sentQty,
+			EventType:    "supplier_ack",
+			Highlight:    "Supplier mahsulotni qaytarganingizni tasdiqladi",
+			Status:       "accepted",
+			CreatedLabel: strings.TrimSpace(createdLabel),
+		})
+	}
+	return result, rows.Err()
+}
+
+func (r *Reader) customerResultEvents(ctx context.Context) ([]core.DispatchRecord, error) {
+	rows, err := r.deliveryNoteRows(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	result := make([]core.DispatchRecord, 0, len(rows))
+	for _, row := range rows {
+		record, ok := buildCustomerResultDispatch(row)
+		if ok {
+			result = append(result, record)
+		}
+	}
+	return result, nil
+}
+
 func classifyWerkaReceipt(row purchaseReceiptSummaryRow) (string, bool) {
 	sentQty := row.TotalQty
 	if markerQty, ok := erpnext.ParseTelegramReceiptMarkerQty(row.SupplierDeliveryNote); ok && markerQty > sentQty {
@@ -760,6 +873,31 @@ func deliveryStatus(row deliveryNoteSummaryRow) string {
 	default:
 		return "pending"
 	}
+}
+
+func buildCustomerResultDispatch(row deliveryNoteSummaryRow) (core.DispatchRecord, bool) {
+	status := deliveryStatus(row)
+	if status != "accepted" && status != "partial" && status != "rejected" {
+		return core.DispatchRecord{}, false
+	}
+	record := deliveryNoteRowToDispatchRecord(row)
+	record.ID = customerDeliveryResultEventPrefix(record.ID)
+	switch status {
+	case "accepted":
+		record.EventType = "customer_delivery_confirmed"
+		record.Highlight = "Customer mahsulotni qabul qildi"
+	case "partial":
+		record.EventType = "customer_delivery_partial"
+		record.Highlight = "Customer mahsulotning bir qismini qaytardi"
+	case "rejected":
+		record.EventType = "customer_delivery_rejected"
+		record.Highlight = "Customer mahsulotni rad etdi"
+	}
+	return record, true
+}
+
+func customerDeliveryResultEventPrefix(id string) string {
+	return "customer_delivery_result:" + strings.TrimSpace(id)
 }
 
 func purchaseReceiptStatusFromQuantities(sentQty, acceptedQty float64) string {

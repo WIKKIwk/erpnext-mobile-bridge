@@ -112,6 +112,7 @@ type DirectoryReader interface {
 	WerkaHome(ctx context.Context, pendingLimit int) (WerkaHomeData, error)
 	WerkaStatusBreakdown(ctx context.Context, kind string) ([]WerkaStatusBreakdownEntry, error)
 	WerkaStatusDetails(ctx context.Context, kind, supplierRef string) ([]DispatchRecord, error)
+	WerkaHistory(ctx context.Context) ([]DispatchRecord, error)
 	SearchWerkaSuppliersPage(ctx context.Context, query string, limit, offset int) ([]SupplierDirectoryEntry, error)
 	SearchWerkaCustomersPage(ctx context.Context, query string, limit, offset int) ([]CustomerDirectoryEntry, error)
 	SearchWerkaSupplierItemsPage(ctx context.Context, supplierRef, query string, limit, offset int) ([]SupplierItem, error)
@@ -776,6 +777,9 @@ func (a *ERPAuthenticator) WerkaStatusDetails(ctx context.Context, kind, supplie
 }
 
 func (a *ERPAuthenticator) WerkaHistory(ctx context.Context) ([]DispatchRecord, error) {
+	if a.reader != nil {
+		return a.reader.WerkaHistory(ctx)
+	}
 	return a.collectWerkaHistoryRecords(ctx)
 }
 
