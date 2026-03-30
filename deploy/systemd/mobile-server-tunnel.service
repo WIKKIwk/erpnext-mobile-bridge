@@ -1,0 +1,17 @@
+[Unit]
+Description=ERPNext Mobile Server Cloudflare Tunnel
+After=network-online.target mobile-server-core.service
+Wants=network-online.target mobile-server-core.service
+
+[Service]
+Type=simple
+User=wikki
+WorkingDirectory=/home/wikki/deploy/mobile_server_deploy
+ExecStart=/bin/bash -lc 'exec /usr/local/bin/cloudflared tunnel --protocol http2 --config /home/wikki/deploy/mobile_server_deploy/.core_domain_tunnel.yml run accord-vision-core >> /home/wikki/deploy/mobile_server_deploy/.core_domain_tunnel.log 2>&1'
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
