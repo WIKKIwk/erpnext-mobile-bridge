@@ -27,6 +27,7 @@ type CustomerHomeSummary = core.CustomerHomeSummary
 type CustomerDeliveryDetail = core.CustomerDeliveryDetail
 type SupplierStatusBreakdownEntry = core.SupplierStatusBreakdownEntry
 type WerkaHomeSummary = core.WerkaHomeSummary
+type WerkaHomeData = core.WerkaHomeData
 type WerkaStatusBreakdownEntry = core.WerkaStatusBreakdownEntry
 type CreateDispatchRequest = core.CreateDispatchRequest
 type ConfirmReceiptRequest = core.ConfirmReceiptRequest

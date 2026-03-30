@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -40,19 +41,33 @@ type Reader struct {
 }
 
 type purchaseReceiptSummaryRow struct {
+	Name                 string
 	Supplier             string
+	SupplierName         string
 	DocStatus            int
 	Status               string
 	TotalQty             float64
+	PostingDate          string
 	SupplierDeliveryNote string
 	Remarks              string
+	Currency             string
+	ItemCode             string
+	ItemName             string
+	UOM                  string
+	Amount               float64
 }
 
 type deliveryNoteSummaryRow struct {
+	Name                string
 	Customer            string
+	CustomerName        string
 	DocStatus           int
+	Modified            string
 	Qty                 float64
 	ReturnedQty         float64
+	ItemCode            string
+	ItemName            string
+	UOM                 string
 	AccordFlowState     int
 	AccordCustomerState int
 }
@@ -379,6 +394,66 @@ func (r *Reader) WerkaSummary(ctx context.Context) (core.WerkaHomeSummary, error
 	return summary, nil
 }
 
+func (r *Reader) WerkaHome(ctx context.Context, pendingLimit int) (core.WerkaHomeData, error) {
+	receipts, err := r.telegramReceiptRows(ctx, "")
+	if err != nil {
+		return core.WerkaHomeData{}, err
+	}
+	deliveryNotes, err := r.deliveryNoteRows(ctx, "")
+	if err != nil {
+		return core.WerkaHomeData{}, err
+	}
+
+	data := core.WerkaHomeData{
+		Summary:      core.WerkaHomeSummary{},
+		PendingItems: make([]core.DispatchRecord, 0, max(pendingLimit, 0)),
+	}
+
+	for _, row := range receipts {
+		status, include := classifyWerkaReceipt(row)
+		if !include {
+			continue
+		}
+		switch status {
+		case "pending", "draft":
+			data.Summary.PendingCount++
+			if pendingLimit <= 0 || len(data.PendingItems) < pendingLimit {
+				data.PendingItems = append(data.PendingItems, purchaseReceiptRowToDispatchRecord(row))
+			}
+		case "accepted":
+			data.Summary.ConfirmedCount++
+		case "partial", "rejected", "cancelled":
+			data.Summary.ReturnedCount++
+		}
+	}
+
+	for _, row := range deliveryNotes {
+		if !deliveryVisible(row) {
+			continue
+		}
+		status := deliveryStatus(row)
+		switch status {
+		case "pending":
+			data.Summary.PendingCount++
+			if pendingLimit <= 0 || len(data.PendingItems) < pendingLimit {
+				data.PendingItems = append(data.PendingItems, deliveryNoteRowToDispatchRecord(row))
+			}
+		case "accepted":
+			data.Summary.ConfirmedCount++
+		case "partial", "rejected", "cancelled":
+			data.Summary.ReturnedCount++
+		}
+	}
+
+	sort.Slice(data.PendingItems, func(i, j int) bool {
+		return data.PendingItems[i].CreatedLabel > data.PendingItems[j].CreatedLabel
+	})
+	if pendingLimit > 0 && len(data.PendingItems) > pendingLimit {
+		data.PendingItems = data.PendingItems[:pendingLimit]
+	}
+	return data, nil
+}
+
 func (r *Reader) SupplierSummary(ctx context.Context, supplierRef string) (core.SupplierHomeSummary, error) {
 	rows, err := r.telegramReceiptRows(ctx, supplierRef)
 	if err != nil {
@@ -423,10 +498,25 @@ func (r *Reader) CustomerSummary(ctx context.Context, customerRef string) (core.
 
 func (r *Reader) telegramReceiptRows(ctx context.Context, supplierRef string) ([]purchaseReceiptSummaryRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT supplier, docstatus, COALESCE(status, ''), COALESCE(total_qty, 0), COALESCE(supplier_delivery_note, ''), COALESCE(remarks, '')
-		FROM `+"`tabPurchase Receipt`"+`
-		WHERE supplier_delivery_note LIKE 'TG:%'
-		  AND (? = '' OR supplier = ?)
+		SELECT
+			pr.name,
+			pr.supplier,
+			COALESCE(pr.supplier_name, ''),
+			pr.docstatus,
+			COALESCE(pr.status, ''),
+			COALESCE(pr.total_qty, 0),
+			COALESCE(CAST(pr.posting_date AS CHAR), ''),
+			COALESCE(pr.supplier_delivery_note, ''),
+			COALESCE(pr.remarks, ''),
+			COALESCE(pr.currency, ''),
+			COALESCE(pri.item_code, ''),
+			COALESCE(pri.item_name, ''),
+			COALESCE(pri.uom, ''),
+			COALESCE(pri.amount, 0)
+		FROM `+"`tabPurchase Receipt`"+` pr
+		LEFT JOIN `+"`tabPurchase Receipt Item`"+` pri ON pri.parent = pr.name AND pri.idx = 1
+		WHERE pr.supplier_delivery_note LIKE 'TG:%'
+		  AND (? = '' OR pr.supplier = ?)
 	`, strings.TrimSpace(supplierRef), strings.TrimSpace(supplierRef))
 	if err != nil {
 		return nil, err
@@ -437,12 +527,20 @@ func (r *Reader) telegramReceiptRows(ctx context.Context, supplierRef string) ([
 	for rows.Next() {
 		var row purchaseReceiptSummaryRow
 		if err := rows.Scan(
+			&row.Name,
 			&row.Supplier,
+			&row.SupplierName,
 			&row.DocStatus,
 			&row.Status,
 			&row.TotalQty,
+			&row.PostingDate,
 			&row.SupplierDeliveryNote,
 			&row.Remarks,
+			&row.Currency,
+			&row.ItemCode,
+			&row.ItemName,
+			&row.UOM,
+			&row.Amount,
 		); err != nil {
 			return nil, err
 		}
@@ -453,9 +551,22 @@ func (r *Reader) telegramReceiptRows(ctx context.Context, supplierRef string) ([
 
 func (r *Reader) deliveryNoteRows(ctx context.Context, customerRef string) ([]deliveryNoteSummaryRow, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT customer, docstatus, COALESCE(total_qty, 0), COALESCE(per_returned, 0), COALESCE(accord_flow_state, 0), COALESCE(accord_customer_state, 0)
-		FROM `+"`tabDelivery Note`"+`
-		WHERE (? = '' OR customer = ?)
+		SELECT
+			dn.name,
+			dn.customer,
+			COALESCE(dn.customer_name, ''),
+			dn.docstatus,
+			COALESCE(CAST(dn.modified AS CHAR), ''),
+			COALESCE(dn.total_qty, 0),
+			COALESCE(dn.per_returned, 0),
+			COALESCE(dni.item_code, ''),
+			COALESCE(dni.item_name, ''),
+			COALESCE(dni.uom, ''),
+			COALESCE(dn.accord_flow_state, 0),
+			COALESCE(dn.accord_customer_state, 0)
+		FROM `+"`tabDelivery Note`"+` dn
+		LEFT JOIN `+"`tabDelivery Note Item`"+` dni ON dni.parent = dn.name AND dni.idx = 1
+		WHERE (? = '' OR dn.customer = ?)
 	`, strings.TrimSpace(customerRef), strings.TrimSpace(customerRef))
 	if err != nil {
 		return nil, err
@@ -466,10 +577,16 @@ func (r *Reader) deliveryNoteRows(ctx context.Context, customerRef string) ([]de
 	for rows.Next() {
 		var row deliveryNoteSummaryRow
 		if err := rows.Scan(
+			&row.Name,
 			&row.Customer,
+			&row.CustomerName,
 			&row.DocStatus,
+			&row.Modified,
 			&row.Qty,
 			&row.ReturnedQty,
+			&row.ItemCode,
+			&row.ItemName,
+			&row.UOM,
 			&row.AccordFlowState,
 			&row.AccordCustomerState,
 		); err != nil {
@@ -537,6 +654,45 @@ func purchaseReceiptStatusFromQuantities(sentQty, acceptedQty float64) string {
 		return "partial"
 	default:
 		return "accepted"
+	}
+}
+
+func purchaseReceiptRowToDispatchRecord(row purchaseReceiptSummaryRow) core.DispatchRecord {
+	sentQty := row.TotalQty
+	if markerQty, ok := erpnext.ParseTelegramReceiptMarkerQty(row.SupplierDeliveryNote); ok && markerQty > sentQty {
+		sentQty = markerQty
+	}
+	status, _ := classifyWerkaReceipt(row)
+	return core.DispatchRecord{
+		ID:           strings.TrimSpace(row.Name),
+		RecordType:   "purchase_receipt",
+		SupplierRef:  strings.TrimSpace(row.Supplier),
+		SupplierName: strings.TrimSpace(row.SupplierName),
+		ItemCode:     strings.TrimSpace(row.ItemCode),
+		ItemName:     strings.TrimSpace(row.ItemName),
+		UOM:          strings.TrimSpace(row.UOM),
+		SentQty:      sentQty,
+		AcceptedQty:  0,
+		Amount:       row.Amount,
+		Currency:     strings.TrimSpace(row.Currency),
+		Status:       status,
+		CreatedLabel: strings.TrimSpace(row.PostingDate),
+	}
+}
+
+func deliveryNoteRowToDispatchRecord(row deliveryNoteSummaryRow) core.DispatchRecord {
+	return core.DispatchRecord{
+		ID:           strings.TrimSpace(row.Name),
+		RecordType:   "delivery_note",
+		SupplierRef:  strings.TrimSpace(row.Customer),
+		SupplierName: strings.TrimSpace(row.CustomerName),
+		ItemCode:     strings.TrimSpace(row.ItemCode),
+		ItemName:     strings.TrimSpace(row.ItemName),
+		UOM:          strings.TrimSpace(row.UOM),
+		SentQty:      row.Qty,
+		AcceptedQty:  0,
+		Status:       deliveryStatus(row),
+		CreatedLabel: strings.TrimSpace(row.Modified),
 	}
 }
 

@@ -139,6 +139,11 @@ type WerkaHomeSummary struct {
 	ReturnedCount  int `json:"returned_count"`
 }
 
+type WerkaHomeData struct {
+	Summary      WerkaHomeSummary `json:"summary"`
+	PendingItems []DispatchRecord `json:"pending_items"`
+}
+
 type WerkaStatusBreakdownEntry struct {
 	SupplierRef      string  `json:"supplier_ref"`
 	SupplierName     string  `json:"supplier_name"`

@@ -109,6 +109,7 @@ type ERPClient interface {
 }
 
 type DirectoryReader interface {
+	WerkaHome(ctx context.Context, pendingLimit int) (WerkaHomeData, error)
 	SearchWerkaSuppliersPage(ctx context.Context, query string, limit, offset int) ([]SupplierDirectoryEntry, error)
 	SearchWerkaCustomersPage(ctx context.Context, query string, limit, offset int) ([]CustomerDirectoryEntry, error)
 	SearchWerkaSupplierItemsPage(ctx context.Context, supplierRef, query string, limit, offset int) ([]SupplierItem, error)
@@ -576,6 +577,24 @@ func (a *ERPAuthenticator) WerkaPending(ctx context.Context, limit int) ([]Dispa
 		result = result[:limit]
 	}
 	return result, nil
+}
+
+func (a *ERPAuthenticator) WerkaHome(ctx context.Context, pendingLimit int) (WerkaHomeData, error) {
+	if a.reader != nil {
+		return a.reader.WerkaHome(ctx, pendingLimit)
+	}
+	summary, err := a.WerkaSummary(ctx)
+	if err != nil {
+		return WerkaHomeData{}, err
+	}
+	pending, err := a.WerkaPending(ctx, pendingLimit)
+	if err != nil {
+		return WerkaHomeData{}, err
+	}
+	return WerkaHomeData{
+		Summary:      summary,
+		PendingItems: pending,
+	}, nil
 }
 
 func (a *ERPAuthenticator) WerkaSummary(ctx context.Context) (WerkaHomeSummary, error) {

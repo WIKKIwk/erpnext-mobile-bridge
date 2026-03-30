@@ -62,6 +62,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/mobile/supplier/items", s.handleSupplierItems)
 	mux.HandleFunc("/v1/mobile/supplier/dispatch", s.handleCreateDispatch)
 	mux.HandleFunc("/v1/mobile/werka/summary", s.handleWerkaSummary)
+	mux.HandleFunc("/v1/mobile/werka/home", s.handleWerkaHome)
 	mux.HandleFunc("/v1/mobile/werka/customers", s.handleWerkaCustomers)
 	mux.HandleFunc("/v1/mobile/werka/suppliers", s.handleWerkaSuppliers)
 	mux.HandleFunc("/v1/mobile/werka/supplier-items", s.handleWerkaSupplierItems)
@@ -872,6 +873,24 @@ func (s *Server) handleWerkaSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) handleWerkaHome(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.authorize(w, r)
+	if !ok {
+		return
+	}
+	if err := requireRole(principal, RoleWerka); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	data, err := s.auth.WerkaHome(r.Context(), 20)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "werka home failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
 }
 
 func (s *Server) handleWerkaSuppliers(w http.ResponseWriter, r *http.Request) {
