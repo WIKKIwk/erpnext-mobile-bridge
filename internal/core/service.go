@@ -110,6 +110,8 @@ type ERPClient interface {
 
 type DirectoryReader interface {
 	WerkaHome(ctx context.Context, pendingLimit int) (WerkaHomeData, error)
+	WerkaStatusBreakdown(ctx context.Context, kind string) ([]WerkaStatusBreakdownEntry, error)
+	WerkaStatusDetails(ctx context.Context, kind, supplierRef string) ([]DispatchRecord, error)
 	SearchWerkaSuppliersPage(ctx context.Context, query string, limit, offset int) ([]SupplierDirectoryEntry, error)
 	SearchWerkaCustomersPage(ctx context.Context, query string, limit, offset int) ([]CustomerDirectoryEntry, error)
 	SearchWerkaSupplierItemsPage(ctx context.Context, supplierRef, query string, limit, offset int) ([]SupplierItem, error)
@@ -642,6 +644,9 @@ func (a *ERPAuthenticator) WerkaSummary(ctx context.Context) (WerkaHomeSummary, 
 }
 
 func (a *ERPAuthenticator) WerkaStatusBreakdown(ctx context.Context, kind string) ([]WerkaStatusBreakdownEntry, error) {
+	if a.reader != nil {
+		return a.reader.WerkaStatusBreakdown(ctx, kind)
+	}
 	items, err := a.collectTelegramPurchaseReceipts(ctx)
 	if err != nil {
 		return nil, err
@@ -725,6 +730,9 @@ func (a *ERPAuthenticator) WerkaStatusBreakdown(ctx context.Context, kind string
 }
 
 func (a *ERPAuthenticator) WerkaStatusDetails(ctx context.Context, kind, supplierRef string) ([]DispatchRecord, error) {
+	if a.reader != nil {
+		return a.reader.WerkaStatusDetails(ctx, kind, supplierRef)
+	}
 	items, err := a.collectTelegramPurchaseReceipts(ctx)
 	if err != nil {
 		return nil, err

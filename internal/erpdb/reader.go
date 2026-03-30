@@ -454,6 +454,122 @@ func (r *Reader) WerkaHome(ctx context.Context, pendingLimit int) (core.WerkaHom
 	return data, nil
 }
 
+func (r *Reader) WerkaStatusBreakdown(ctx context.Context, kind string) ([]core.WerkaStatusBreakdownEntry, error) {
+	receipts, err := r.telegramReceiptRows(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	deliveryNotes, err := r.deliveryNoteRows(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	grouped := make(map[string]*core.WerkaStatusBreakdownEntry)
+	for _, row := range receipts {
+		record := purchaseReceiptRowToDispatchRecord(row)
+		if !matchesWerkaBreakdown(record, kind) {
+			continue
+		}
+		key := strings.TrimSpace(record.SupplierRef)
+		if key == "" {
+			key = strings.TrimSpace(record.SupplierName)
+		}
+		entry := grouped[key]
+		if entry == nil {
+			entry = &core.WerkaStatusBreakdownEntry{
+				SupplierRef:  record.SupplierRef,
+				SupplierName: record.SupplierName,
+				UOM:          record.UOM,
+			}
+			grouped[key] = entry
+		}
+		entry.ReceiptCount++
+		entry.TotalSentQty += record.SentQty
+		entry.TotalAcceptedQty += record.AcceptedQty
+		entry.TotalReturnedQty += floatMax(record.SentQty-record.AcceptedQty, 0)
+		if entry.UOM == "" {
+			entry.UOM = record.UOM
+		}
+	}
+
+	for _, row := range deliveryNotes {
+		record := deliveryNoteRowToDispatchRecord(row)
+		if !matchesWerkaBreakdown(record, kind) {
+			continue
+		}
+		key := strings.TrimSpace(record.SupplierRef)
+		if key == "" {
+			key = strings.TrimSpace(record.SupplierName)
+		}
+		entry := grouped[key]
+		if entry == nil {
+			entry = &core.WerkaStatusBreakdownEntry{
+				SupplierRef:  record.SupplierRef,
+				SupplierName: record.SupplierName,
+				UOM:          record.UOM,
+			}
+			grouped[key] = entry
+		}
+		entry.ReceiptCount++
+		entry.TotalSentQty += record.SentQty
+		entry.TotalAcceptedQty += record.AcceptedQty
+		entry.TotalReturnedQty += floatMax(record.SentQty-record.AcceptedQty, 0)
+		if entry.UOM == "" {
+			entry.UOM = record.UOM
+		}
+	}
+
+	result := make([]core.WerkaStatusBreakdownEntry, 0, len(grouped))
+	for _, entry := range grouped {
+		result = append(result, *entry)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].ReceiptCount != result[j].ReceiptCount {
+			return result[i].ReceiptCount > result[j].ReceiptCount
+		}
+		return strings.ToLower(result[i].SupplierName) < strings.ToLower(result[j].SupplierName)
+	})
+	return result, nil
+}
+
+func (r *Reader) WerkaStatusDetails(ctx context.Context, kind, supplierRef string) ([]core.DispatchRecord, error) {
+	receipts, err := r.telegramReceiptRows(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	deliveryNotes, err := r.deliveryNoteRows(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	needle := strings.TrimSpace(supplierRef)
+	result := make([]core.DispatchRecord, 0, 64)
+	for _, row := range receipts {
+		record := purchaseReceiptRowToDispatchRecord(row)
+		if needle != "" && !strings.EqualFold(strings.TrimSpace(record.SupplierRef), needle) {
+			continue
+		}
+		if !matchesWerkaBreakdown(record, kind) {
+			continue
+		}
+		result = append(result, record)
+	}
+	for _, row := range deliveryNotes {
+		record := deliveryNoteRowToDispatchRecord(row)
+		if needle != "" && !strings.EqualFold(strings.TrimSpace(record.SupplierRef), needle) {
+			continue
+		}
+		if !matchesWerkaBreakdown(record, kind) {
+			continue
+		}
+		result = append(result, record)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedLabel > result[j].CreatedLabel
+	})
+	return result, nil
+}
+
 func (r *Reader) SupplierSummary(ctx context.Context, supplierRef string) (core.SupplierHomeSummary, error) {
 	rows, err := r.telegramReceiptRows(ctx, supplierRef)
 	if err != nil {
@@ -655,6 +771,26 @@ func purchaseReceiptStatusFromQuantities(sentQty, acceptedQty float64) string {
 	default:
 		return "accepted"
 	}
+}
+
+func matchesWerkaBreakdown(record core.DispatchRecord, kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case "pending":
+		return record.Status == "pending" || record.Status == "draft"
+	case "confirmed":
+		return record.Status == "accepted"
+	case "returned":
+		return record.Status == "partial" || record.Status == "rejected" || record.Status == "cancelled"
+	default:
+		return false
+	}
+}
+
+func floatMax(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func purchaseReceiptRowToDispatchRecord(row purchaseReceiptSummaryRow) core.DispatchRecord {
