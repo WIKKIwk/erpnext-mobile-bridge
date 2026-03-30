@@ -1,6 +1,10 @@
 package mobileapi
 
-import "mobile_server/internal/core"
+import (
+	"time"
+
+	"mobile_server/internal/core"
+)
 
 var (
 	ErrInvalidCredentials    = core.ErrInvalidCredentials
@@ -47,6 +51,10 @@ func NewERPAuthenticator(
 
 func NewSessionManager() *SessionManager {
 	return core.NewSessionManager()
+}
+
+func NewPersistentSessionManager(path string, ttl time.Duration) *SessionManager {
+	return core.NewPersistentSessionManager(path, ttl)
 }
 
 func requireRole(principal Principal, role PrincipalRole) error {

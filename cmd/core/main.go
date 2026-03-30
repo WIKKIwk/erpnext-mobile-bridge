@@ -4,7 +4,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"mobile_server/internal/config"
 	"mobile_server/internal/core"
@@ -24,6 +26,21 @@ func main() {
 	adminSupplierStorePath := strings.TrimSpace(os.Getenv("MOBILE_API_ADMIN_SUPPLIER_STORE_PATH"))
 	if adminSupplierStorePath == "" {
 		adminSupplierStorePath = "data/mobile_admin_suppliers.json"
+	}
+	sessionStorePath := strings.TrimSpace(os.Getenv("MOBILE_API_SESSION_STORE_PATH"))
+	if sessionStorePath == "" {
+		sessionStorePath = "data/mobile_sessions.json"
+	}
+	sessionTTL := 30 * 24 * time.Hour
+	if raw := strings.TrimSpace(os.Getenv("MOBILE_API_SESSION_TTL_HOURS")); raw != "" {
+		hours, err := strconv.Atoi(raw)
+		if err != nil {
+			log.Fatalf("invalid MOBILE_API_SESSION_TTL_HOURS: %v", err)
+		}
+		if hours < 0 {
+			log.Fatalf("invalid MOBILE_API_SESSION_TTL_HOURS: must be >= 0")
+		}
+		sessionTTL = time.Duration(hours) * time.Hour
 	}
 
 	cfg, err := config.LoadFromEnv()
@@ -53,7 +70,10 @@ func main() {
 		config.NewDotEnvPersister(".env"),
 	)
 
-	server := mobileapi.NewServer(service)
+	server := mobileapi.NewServerWithSessionManager(
+		service,
+		mobileapi.NewPersistentSessionManager(sessionStorePath, sessionTTL),
+	)
 	log.Printf("core listening on %s", addr)
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
 		log.Fatalf("core stopped: %v", err)

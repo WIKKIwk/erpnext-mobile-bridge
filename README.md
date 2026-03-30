@@ -168,8 +168,15 @@ By default the backend uses local JSON files for mobile state:
 - `data/mobile_profile_prefs.json`
 - `data/mobile_admin_suppliers.json`
 - `data/mobile_push_tokens.json`
+- `data/mobile_sessions.json`
 
 These are suitable for local/single-instance operation, but not a strong multi-instance persistence strategy.
+
+Session behavior:
+
+- login sessions survive backend restart when `data/mobile_sessions.json` is preserved
+- default session TTL is `720` hours (`30` days)
+- set `MOBILE_API_SESSION_TTL_HOURS=0` to disable expiry
 
 ## Run
 

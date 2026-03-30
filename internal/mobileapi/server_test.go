@@ -530,6 +530,18 @@ func (f *fakeERPClient) AddDeliveryNoteComment(_ context.Context, _, _, _, name,
 	return nil
 }
 
+func (f *fakeERPClient) DeleteDeliveryNote(_ context.Context, _, _, _, name string) error {
+	filtered := f.customerDeliveryNotes[:0]
+	for _, item := range f.customerDeliveryNotes {
+		if item.Name == name {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	f.customerDeliveryNotes = filtered
+	return nil
+}
+
 func (f *fakeERPClient) ConfirmAndSubmitPurchaseReceipt(_ context.Context, _, _, _, _ string, _, _ float64, _, _ string) (erpnext.PurchaseReceiptSubmissionResult, error) {
 	return erpnext.PurchaseReceiptSubmissionResult{}, nil
 }
