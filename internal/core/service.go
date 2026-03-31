@@ -595,9 +595,11 @@ func (a *ERPAuthenticator) WerkaHome(ctx context.Context, pendingLimit int) (Wer
 	if err != nil {
 		return WerkaHomeData{}, err
 	}
-	pending, err := a.WerkaPending(ctx, pendingLimit)
+	pendingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	pending, err := a.WerkaPending(pendingCtx, pendingLimit)
 	if err != nil {
-		return WerkaHomeData{}, err
+		pending = nil
 	}
 	return WerkaHomeData{
 		Summary:      summary,
