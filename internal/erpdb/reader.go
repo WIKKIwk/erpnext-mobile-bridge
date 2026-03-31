@@ -676,7 +676,7 @@ func (r *Reader) telegramReceiptRowsLimited(ctx context.Context, supplierRef str
 		LEFT JOIN ` + "`tabPurchase Receipt Item`" + ` pri ON pri.parent = pr.name AND pri.idx = 1
 		WHERE pr.supplier_delivery_note LIKE 'TG:%'
 		  AND (? = '' OR pr.supplier = ?)
-		ORDER BY pr.posting_date DESC, pr.name DESC`
+		ORDER BY pr.name DESC`
 	if limit > 0 {
 		query += "\n\t\tLIMIT ?"
 	}
@@ -740,7 +740,7 @@ func (r *Reader) deliveryNoteRowsLimited(ctx context.Context, customerRef string
 		FROM ` + "`tabDelivery Note`" + ` dn
 		LEFT JOIN ` + "`tabDelivery Note Item`" + ` dni ON dni.parent = dn.name AND dni.idx = 1
 		WHERE (? = '' OR dn.customer = ?)
-		ORDER BY dn.modified DESC, dn.name DESC`
+		ORDER BY dn.name DESC`
 	if limit > 0 {
 		query += "\n\t\tLIMIT ?"
 	}
@@ -801,7 +801,7 @@ func (r *Reader) supplierAckEventsLimited(ctx context.Context, limit int) ([]cor
 		WHERE c.reference_doctype = 'Purchase Receipt'
 		  AND c.content LIKE 'Supplier%'
 		  AND c.content LIKE '%Tasdiqlayman%'
-		ORDER BY c.creation DESC`
+		ORDER BY c.name DESC`
 	if limit > 0 {
 		query += "\n\t\tLIMIT ?"
 	}
