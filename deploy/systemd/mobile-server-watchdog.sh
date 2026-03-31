@@ -3,6 +3,8 @@ set -euo pipefail
 
 WORKDIR="/home/wikki/deploy/mobile_server_deploy"
 CORE_HEALTH_URL="${CORE_HEALTH_URL:-http://127.0.0.1:8081/healthz}"
+CORE_LOGIN_URL="${CORE_LOGIN_URL:-http://127.0.0.1:8081/v1/mobile/auth/login}"
+WERKA_SUMMARY_URL="${WERKA_SUMMARY_URL:-http://127.0.0.1:8081/v1/mobile/werka/summary}"
 PUBLIC_HEALTH_URL="${PUBLIC_HEALTH_URL:-https://core.wspace.sbs/healthz}"
 LOCK_FILE="${LOCK_FILE:-/tmp/mobile-server-watchdog.lock}"
 CHECK_TIMEOUT="${CHECK_TIMEOUT:-5}"
@@ -14,6 +16,21 @@ log() {
 health_ok() {
   local url="$1"
   curl -fsS --max-time "$CHECK_TIMEOUT" "$url" >/dev/null 2>&1
+}
+
+werka_summary_ok() {
+  if [ -z "${WERKA_PHONE:-}" ] || [ -z "${MOBILE_DEV_WERKA_CODE:-}" ]; then
+    log "werka creds missing; skipping deep summary check"
+    return 0
+  fi
+  local payload
+  payload=$(printf '{"phone":"%s","code":"%s"}' "$WERKA_PHONE" "$MOBILE_DEV_WERKA_CODE")
+  local login_body
+  login_body="$(curl -fsS --max-time "$CHECK_TIMEOUT" -H 'Content-Type: application/json' -d "$payload" "$CORE_LOGIN_URL")" || return 1
+  local token
+  token="$(printf '%s' "$login_body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))')" || return 1
+  [ -n "$token" ] || return 1
+  curl -fsS --max-time "$CHECK_TIMEOUT" -H "Authorization: Bearer $token" "$WERKA_SUMMARY_URL" >/dev/null 2>&1
 }
 
 restart_unit() {
@@ -44,12 +61,14 @@ if ! flock -n 9; then
 fi
 
 cd "$WORKDIR"
+[ -f ./.env ] && . ./.env
 
-if ! health_ok "$CORE_HEALTH_URL"; then
+if ! health_ok "$CORE_HEALTH_URL" || ! werka_summary_ok; then
   restart_unit "mobile-server-core.service"
   wait_for_health "$CORE_HEALTH_URL" "core" || exit 1
+  werka_summary_ok || exit 1
 else
-  log "core health ok"
+  log "core and werka summary health ok"
 fi
 
 if ! pgrep -f 'cloudflared.*accord-vision-core' >/dev/null 2>&1; then
