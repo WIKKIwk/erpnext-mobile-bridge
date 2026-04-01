@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"mobile_server/internal/core"
 )
 
 func TestClampLimit(t *testing.T) {
@@ -23,6 +25,76 @@ func TestLikePatternEscapesWildcards(t *testing.T) {
 	want := `%a\%b\_c\\z%`
 	if got != want {
 		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestBuildSearchPatternsAddsLatinFallbackForCyrillic(t *testing.T) {
+	items := []core.SupplierItem{
+		{Code: "A001", Name: "Central Item"},
+		{Code: "A002", Name: "A’lo Ta’m Kanada"},
+		{Code: "A003", Name: "Another Item"},
+	}
+	got := rankSupplierItemsByQuery(items, "ало")
+	if len(got) != 1 {
+		t.Fatalf("expected one normalized match, got %d", len(got))
+	}
+	if got[0].Name != "A’lo Ta’m Kanada" {
+		t.Fatalf("unexpected top ranked item: %+v", got[0])
+	}
+}
+
+func TestRankCustomerItemOptionsByQueryPrefersItemMatches(t *testing.T) {
+	options := []core.CustomerItemOption{
+		{
+			CustomerRef:  "cust-1",
+			CustomerName: "Afsona Market",
+			ItemCode:     "X001",
+			ItemName:     "Random Product",
+		},
+		{
+			CustomerRef:  "cust-2",
+			CustomerName: "Other Customer",
+			ItemCode:     "X002",
+			ItemName:     "Afsona",
+		},
+	}
+
+	got := rankCustomerItemOptionsByQuery(options, "афсона")
+	if len(got) != 2 {
+		t.Fatalf("expected two matches, got %d", len(got))
+	}
+	if got[0].ItemName != "Afsona" {
+		t.Fatalf("expected direct item match first, got %+v", got[0])
+	}
+}
+
+func TestRankSupplierItemSearchEntriesByQueryMatchesLinkedCustomerNames(t *testing.T) {
+	items := []supplierItemSearchEntry{
+		{
+			item: core.SupplierItem{Code: "ITEM-001", Name: "Universal Item"},
+			searchTerms: []string{
+				"ITEM-001",
+				"Universal Item",
+				"Saidamin",
+				"HotLunch",
+			},
+		},
+		{
+			item: core.SupplierItem{Code: "ITEM-002", Name: "Other Item"},
+			searchTerms: []string{
+				"ITEM-002",
+				"Other Item",
+				"Saidamin",
+			},
+		},
+	}
+
+	got := rankSupplierItemSearchEntriesByQuery(items, "hotlunch")
+	if len(got) != 1 {
+		t.Fatalf("expected one customer-linked match, got %d", len(got))
+	}
+	if got[0].Code != "ITEM-001" {
+		t.Fatalf("unexpected matched item: %+v", got[0])
 	}
 }
 

@@ -757,6 +757,38 @@ func TestBuildSearchQueryVariantsAddsLatinFallbackForCyrillic(t *testing.T) {
 	}
 }
 
+func TestNormalizeForSearchRemovesApostrophesAndTransliteratesCyrillic(t *testing.T) {
+	got := NormalizeForSearch("A’lo Ta’m")
+	if got != "alo tam" {
+		t.Fatalf("unexpected normalized latin value: %q", got)
+	}
+
+	got = NormalizeForSearch("Аъло Таъм")
+	if got != "alo tam" {
+		t.Fatalf("unexpected normalized cyrillic value: %q", got)
+	}
+
+	got = NormalizeForSearch("xotlanch")
+	if got != "hotlanch" {
+		t.Fatalf("expected hard x to normalize to h, got %q", got)
+	}
+}
+
+func TestSearchQueryScoreUsesNormalizedMatching(t *testing.T) {
+	if SearchQueryScore("алo", "A’lo Ta’m", "ALO-001") == 0 {
+		t.Fatalf("expected apostrophe-insensitive match")
+	}
+	if SearchQueryScore("омбор", "Main Ombor", "WH-1") == 0 {
+		t.Fatalf("expected cyrillic query to match latin text")
+	}
+	if SearchQueryScore("омбор", "Central Warehouse", "WH-1") != 0 {
+		t.Fatalf("did not expect unrelated values to match")
+	}
+	if SearchQueryScore("hotlunch", "xotlanch", "ITEM-001") == 0 {
+		t.Fatalf("expected hard x and soft h to match")
+	}
+}
+
 func TestSearchWarehousesUsesCyrillicFallbackVariant(t *testing.T) {
 	var queries []string
 
