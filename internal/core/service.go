@@ -548,6 +548,14 @@ func (a *ERPAuthenticator) SupplierStatusDetails(ctx context.Context, principal 
 }
 
 func (a *ERPAuthenticator) WerkaPending(ctx context.Context, limit int) ([]DispatchRecord, error) {
+	if a.reader != nil {
+		readerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		home, err := a.reader.WerkaHome(readerCtx, limit)
+		if err == nil {
+			return home.PendingItems, nil
+		}
+	}
 	items, err := a.erp.ListPendingPurchaseReceipts(ctx, a.baseURL, a.apiKey, a.apiSecret, limit)
 	if err != nil {
 		return nil, err
@@ -657,6 +665,14 @@ func (a *ERPAuthenticator) WerkaSummary(ctx context.Context) (WerkaHomeSummary, 
 }
 
 func (a *ERPAuthenticator) WerkaStatusBreakdown(ctx context.Context, kind string) ([]WerkaStatusBreakdownEntry, error) {
+	if a.reader != nil {
+		readerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		items, err := a.reader.WerkaStatusBreakdown(readerCtx, kind)
+		if err == nil {
+			return items, nil
+		}
+	}
 	items, err := a.collectTelegramPurchaseReceipts(ctx)
 	if err != nil {
 		return nil, err
@@ -740,6 +756,14 @@ func (a *ERPAuthenticator) WerkaStatusBreakdown(ctx context.Context, kind string
 }
 
 func (a *ERPAuthenticator) WerkaStatusDetails(ctx context.Context, kind, supplierRef string) ([]DispatchRecord, error) {
+	if a.reader != nil {
+		readerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		items, err := a.reader.WerkaStatusDetails(readerCtx, kind, supplierRef)
+		if err == nil {
+			return items, nil
+		}
+	}
 	items, err := a.collectTelegramPurchaseReceipts(ctx)
 	if err != nil {
 		return nil, err
