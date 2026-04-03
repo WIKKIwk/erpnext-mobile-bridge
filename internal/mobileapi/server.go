@@ -424,7 +424,8 @@ func (s *Server) handleNotificationComment(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "notification comment failed"})
 		return
 	}
-	if principal.Role == RoleSupplier && strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.Message)), "tasdiqlayman") {
+	trimmedMessage := strings.TrimSpace(req.Message)
+	if principal.Role == RoleSupplier && strings.HasPrefix(strings.ToLower(trimmedMessage), "tasdiqlayman") {
 		record := detail.Record
 		record.ID = "supplier_ack:" + strings.TrimSpace(record.ID) + ":" + fmt.Sprintf("%d", time.Now().Unix())
 		record.EventType = "supplier_ack"
@@ -439,8 +440,57 @@ func (s *Server) handleNotificationComment(w http.ResponseWriter, r *http.Reques
 		); err != nil {
 			log.Printf("push send failed for werka acknowledgment event: %v", err)
 		}
+		writeJSON(w, http.StatusOK, detail)
+		return
+	}
+
+	if key, role, ref, ok := notificationCommentPushTarget(principal, detail.Record); ok {
+		title := "Yangi xabar"
+		body := trimmedMessage
+		if err := s.sender.SendToKey(
+			r.Context(),
+			key,
+			title,
+			body,
+			dispatchRecordDataForTarget(detail.Record, role, ref),
+		); err != nil {
+			log.Printf("push send failed for notification comment target=%s: %v", key, err)
+		}
 	}
 	writeJSON(w, http.StatusOK, detail)
+}
+
+func notificationCommentPushTarget(principal Principal, record DispatchRecord) (key string, role PrincipalRole, ref string, ok bool) {
+	switch record.RecordType {
+	case "delivery_note":
+		switch principal.Role {
+		case RoleWerka:
+			ref = strings.TrimSpace(record.SupplierRef)
+			if ref == "" {
+				return "", "", "", false
+			}
+			return string(RoleCustomer) + ":" + ref, RoleCustomer, ref, true
+		case RoleCustomer:
+			return string(RoleWerka) + ":werka", RoleWerka, "werka", true
+		default:
+			return "", "", "", false
+		}
+	case "purchase_receipt":
+		switch principal.Role {
+		case RoleWerka:
+			ref = strings.TrimSpace(record.SupplierRef)
+			if ref == "" {
+				return "", "", "", false
+			}
+			return string(RoleSupplier) + ":" + ref, RoleSupplier, ref, true
+		case RoleSupplier:
+			return string(RoleWerka) + ":werka", RoleWerka, "werka", true
+		default:
+			return "", "", "", false
+		}
+	default:
+		return "", "", "", false
+	}
 }
 
 func (s *Server) handlePushToken(w http.ResponseWriter, r *http.Request) {
@@ -1168,6 +1218,37 @@ func (s *Server) handleWerkaCustomerIssueBatchCreate(w http.ResponseWriter, r *h
 		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "werka customer issue batch create failed"})
 		return
+	}
+
+	for _, created := range result.Created {
+		record := created.Record
+		if record == nil {
+			continue
+		}
+		if err := s.sender.SendToKey(
+			r.Context(),
+			string(RoleCustomer)+":"+strings.TrimSpace(record.CustomerRef),
+			"Werka mahsulot jo'natdi",
+			fmt.Sprintf("%s %.0f %s jo'natildi", strings.TrimSpace(record.ItemCode), record.Qty, strings.TrimSpace(record.UOM)),
+			dispatchRecordDataForTarget(
+				DispatchRecord{
+					ID:           record.EntryID,
+					SupplierRef:  record.CustomerRef,
+					SupplierName: record.CustomerName,
+					ItemCode:     record.ItemCode,
+					ItemName:     record.ItemName,
+					UOM:          record.UOM,
+					SentQty:      record.Qty,
+					AcceptedQty:  0,
+					Status:       "pending",
+					CreatedLabel: record.CreatedLabel,
+				},
+				RoleCustomer,
+				record.CustomerRef,
+			),
+		); err != nil {
+			log.Printf("push send failed for batch customer delivery note: %v", err)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, result)

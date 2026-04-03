@@ -1155,6 +1155,8 @@ func TestServerWerkaCustomerIssueBatchCreateReturnsCreatedAndFailed(t *testing.T
 		nil,
 		nil,
 	))
+	pushes := &recordingPushSender{}
+	server.sender = pushes
 	token, err := server.sessions.Create(Principal{Role: RoleWerka, DisplayName: "Werka", Ref: "werka"})
 	if err != nil {
 		t.Fatalf("failed to create werka session: %v", err)
@@ -1188,6 +1190,12 @@ func TestServerWerkaCustomerIssueBatchCreateReturnsCreatedAndFailed(t *testing.T
 	}
 	if result.Failed[0].LineIndex != 1 || result.Failed[0].ErrorCode != "" || result.Failed[0].Error == "" {
 		t.Fatalf("unexpected failed line: %+v", result.Failed[0])
+	}
+	if len(pushes.calls) != 1 {
+		t.Fatalf("expected 1 push call for created line, got %+v", pushes.calls)
+	}
+	if pushes.calls[0].key != "customer:CUST-001" {
+		t.Fatalf("expected customer push target, got %+v", pushes.calls[0])
 	}
 }
 
@@ -1394,6 +1402,8 @@ func TestServerWerkaSummaryIncludesCustomerDeliveryNotes(t *testing.T) {
 		nil,
 		nil,
 	))
+	pushes := &recordingPushSender{}
+	server.sender = pushes
 	token, err := server.sessions.Create(Principal{
 		Role:        RoleWerka,
 		DisplayName: "Werka",
@@ -1517,6 +1527,8 @@ func TestServerSupplierHistorySkipsCommentBatchForCleanRecords(t *testing.T) {
 		nil,
 		nil,
 	))
+	pushes := &recordingPushSender{}
+	server.sender = pushes
 	token, err := server.sessions.Create(Principal{
 		Role:        RoleSupplier,
 		DisplayName: "Abdulloh",
@@ -1567,6 +1579,8 @@ func TestServerSupplierHistoryReturnsCanonicalFullList(t *testing.T) {
 		nil,
 		nil,
 	))
+	pushes := &recordingPushSender{}
+	server.sender = pushes
 	token, err := server.sessions.Create(Principal{
 		Role:        RoleSupplier,
 		DisplayName: "Abdulloh",
@@ -1615,6 +1629,8 @@ func TestServerNotificationDetailAndCommentFlow(t *testing.T) {
 		nil,
 		nil,
 	))
+	pushes := &recordingPushSender{}
+	server.sender = pushes
 	token, err := server.sessions.Create(Principal{
 		Role:        RoleSupplier,
 		DisplayName: "Abdulloh",
@@ -1651,6 +1667,75 @@ func TestServerNotificationDetailAndCommentFlow(t *testing.T) {
 	}
 	if len(detail.Comments) < 2 {
 		t.Fatalf("expected comments to grow, got %+v", detail.Comments)
+	}
+	if len(pushes.calls) != 1 {
+		t.Fatalf("expected 1 push call, got %+v", pushes.calls)
+	}
+	if pushes.calls[0].key != "werka:werka" {
+		t.Fatalf("expected werka push target, got %+v", pushes.calls[0])
+	}
+}
+
+func TestServerWerkaCommentOnDeliveryNotePushesCustomer(t *testing.T) {
+	fakeERP := &fakeERPClient{
+		customerDeliveryNotes: []erpnext.DeliveryNoteDraft{
+			{
+				Name:                "MAT-DN-0001",
+				Customer:            "CUST-001",
+				CustomerName:        "Customer One",
+				ItemCode:            "ITEM-001",
+				ItemName:            "Rice",
+				Qty:                 5,
+				UOM:                 "Kg",
+				Modified:            "2026-04-03 13:00:00",
+				DocStatus:           1,
+				AccordFlowState:     "1",
+				AccordCustomerState: "3",
+			},
+		},
+	}
+	server := NewServer(NewERPAuthenticator(
+		fakeERP,
+		"http://localhost:8000",
+		"key",
+		"secret",
+		"Stores - CH",
+		"10",
+		"20",
+		"20WERKA0001",
+		"+998901111111",
+		"Werka",
+		nil,
+		nil,
+	))
+	pushes := &recordingPushSender{}
+	server.sender = pushes
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleWerka,
+		DisplayName: "Werka",
+		Ref:         "werka",
+	})
+	if err != nil {
+		t.Fatalf("failed to create werka session: %v", err)
+	}
+
+	commentReq := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/mobile/notifications/comments?receipt_id=customer_delivery_result:MAT-DN-0001",
+		bytes.NewReader([]byte(`{"message":"Qabul qilib olganingizni ko'rdim"}`)),
+	)
+	commentReq.Header.Set("Authorization", "Bearer "+token)
+	commentReq.Header.Set("Content-Type", "application/json")
+	commentResp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(commentResp, commentReq)
+	if commentResp.Code != http.StatusOK {
+		t.Fatalf("unexpected delivery note comment status: %d body=%s", commentResp.Code, commentResp.Body.String())
+	}
+	if len(pushes.calls) != 1 {
+		t.Fatalf("expected 1 push call, got %+v", pushes.calls)
+	}
+	if pushes.calls[0].key != "customer:CUST-001" {
+		t.Fatalf("expected customer push target, got %+v", pushes.calls[0])
 	}
 }
 
