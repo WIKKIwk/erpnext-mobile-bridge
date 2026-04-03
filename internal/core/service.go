@@ -113,6 +113,7 @@ type DirectoryReader interface {
 	WerkaStatusBreakdown(ctx context.Context, kind string) ([]WerkaStatusBreakdownEntry, error)
 	WerkaStatusDetails(ctx context.Context, kind, supplierRef string) ([]DispatchRecord, error)
 	WerkaHistory(ctx context.Context) ([]DispatchRecord, error)
+	WerkaNotifications(ctx context.Context) ([]DispatchRecord, error)
 	SearchWerkaSuppliersPage(ctx context.Context, query string, limit, offset int) ([]SupplierDirectoryEntry, error)
 	SearchWerkaCustomersPage(ctx context.Context, query string, limit, offset int) ([]CustomerDirectoryEntry, error)
 	SearchWerkaSupplierItemsPage(ctx context.Context, supplierRef, query string, limit, offset int) ([]SupplierItem, error)
@@ -818,6 +819,18 @@ func (a *ERPAuthenticator) WerkaHistory(ctx context.Context) ([]DispatchRecord, 
 	return a.collectWerkaHistoryRecords(ctx)
 }
 
+func (a *ERPAuthenticator) WerkaNotifications(ctx context.Context) ([]DispatchRecord, error) {
+	if a.reader != nil {
+		readerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		items, err := a.reader.WerkaNotifications(readerCtx)
+		if err == nil {
+			return items, nil
+		}
+	}
+	return a.collectWerkaNotificationRecords(ctx)
+}
+
 func (a *ERPAuthenticator) collectWerkaHistoryRecords(ctx context.Context) ([]DispatchRecord, error) {
 	items, err := a.collectTelegramPurchaseReceipts(ctx)
 	if err != nil {
@@ -871,6 +884,58 @@ func (a *ERPAuthenticator) collectWerkaHistoryRecords(ctx context.Context) ([]Di
 	return result, nil
 }
 
+func (a *ERPAuthenticator) collectWerkaNotificationRecords(ctx context.Context) ([]DispatchRecord, error) {
+	customerRecords, err := a.collectWerkaCustomerDeliveryRecords(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items, err := a.collectTelegramPurchaseReceipts(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	commentsByReceipt, err := a.purchaseReceiptCommentsByName(ctx, items, 100)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]DispatchRecord, 0, len(customerRecords)+len(items))
+	result = append(result, customerRecords...)
+
+	for _, item := range items {
+		if record, ok := buildWerkaUnannouncedNotificationRecord(item, item.SupplierName); ok {
+			result = append(result, record)
+		}
+
+		for _, comment := range commentsByReceipt[item.Name] {
+			if !isSupplierAcknowledgmentComment(comment.Content) {
+				continue
+			}
+			result = append(result, DispatchRecord{
+				ID:           supplierAckEventPrefix + item.Name + ":" + comment.ID,
+				SupplierRef:  item.Supplier,
+				SupplierName: item.SupplierName,
+				ItemCode:     item.ItemCode,
+				ItemName:     item.ItemName,
+				UOM:          item.UOM,
+				SentQty:      item.Qty,
+				AcceptedQty:  item.Qty,
+				Note:         "",
+				EventType:    "supplier_ack",
+				Highlight:    "Supplier mahsulotni qaytarganingizni tasdiqladi",
+				Status:       "accepted",
+				CreatedLabel: comment.CreatedAt,
+			})
+		}
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedLabel > result[j].CreatedLabel
+	})
+	return result, nil
+}
+
 func (a *ERPAuthenticator) customerResultEvents(ctx context.Context) ([]DispatchRecord, error) {
 	customers, err := a.erp.SearchCustomers(ctx, a.baseURL, a.apiKey, a.apiSecret, "", 500)
 	if err != nil {
@@ -910,10 +975,11 @@ func (a *ERPAuthenticator) collectWerkaCustomerDeliveryRecords(ctx context.Conte
 			return nil, err
 		}
 		for _, item := range deliveryNotes {
-			if !customerDeliveryVisible(item) {
+			record, ok := buildWerkaCustomerDeliveryNotificationRecord(item)
+			if !ok {
 				continue
 			}
-			result = append(result, mapDeliveryNoteToDispatchRecord(item))
+			result = append(result, record)
 		}
 	}
 	return result, nil
@@ -2843,6 +2909,29 @@ func mapPurchaseReceiptToDispatchRecord(item erpnext.PurchaseReceiptDraft, fallb
 	}
 }
 
+func buildWerkaUnannouncedNotificationRecord(item erpnext.PurchaseReceiptDraft, fallbackSupplierName string) (DispatchRecord, bool) {
+	record := mapPurchaseReceiptToDispatchRecord(item, fallbackSupplierName)
+	state := strings.TrimSpace(erpnext.ExtractWerkaUnannouncedState(item.Remarks))
+	switch state {
+	case "approved":
+		record.EventType = "werka_unannounced_approved"
+		record.Highlight = "Supplier aytilmagan molni tasdiqladi"
+		if strings.TrimSpace(record.Note) == "" {
+			record.Note = "Aytilmagan mol tasdiqlandi."
+		}
+		return record, true
+	case "rejected":
+		record.EventType = "werka_unannounced_rejected"
+		record.Highlight = "Supplier aytilmagan molni rad etdi"
+		if strings.TrimSpace(record.Note) == "" {
+			record.Note = "Supplier aytilmagan molni rad etdi."
+		}
+		return record, true
+	default:
+		return DispatchRecord{}, false
+	}
+}
+
 func mapDeliveryNoteToDispatchRecord(item erpnext.DeliveryNoteDraft) DispatchRecord {
 	status := customerDeliveryStatus(item)
 	acceptedQty, returnedQty := customerDecisionQuantities(item, status)
@@ -2878,6 +2967,28 @@ func mapDeliveryNoteToDispatchRecord(item erpnext.DeliveryNoteDraft) DispatchRec
 		Status:       status,
 		CreatedLabel: firstNonEmpty(item.Modified, item.PostingDate),
 	}
+}
+
+func buildWerkaCustomerDeliveryNotificationRecord(item erpnext.DeliveryNoteDraft) (DispatchRecord, bool) {
+	if !customerDeliveryVisible(item) {
+		return DispatchRecord{}, false
+	}
+	record := mapDeliveryNoteToDispatchRecord(item)
+	switch record.Status {
+	case "accepted":
+		record.EventType = "customer_delivery_confirmed"
+		record.Highlight = "Customer mahsulotni qabul qildi"
+	case "partial":
+		record.EventType = "customer_delivery_partial"
+		record.Highlight = "Customer mahsulotning bir qismini qaytardi"
+	case "rejected":
+		record.EventType = "customer_delivery_rejected"
+		record.Highlight = "Customer mahsulotni rad etdi"
+	default:
+		record.EventType = "customer_delivery_pending"
+		record.Highlight = "Haridor javobi kutilmoqda"
+	}
+	return record, true
 }
 
 func customerDecisionQuantities(item erpnext.DeliveryNoteDraft, status string) (acceptedQty, returnedQty float64) {

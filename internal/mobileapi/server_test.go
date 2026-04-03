@@ -2022,6 +2022,118 @@ func TestServerWerkaHistoryReturnsCanonicalFullList(t *testing.T) {
 	}
 }
 
+func TestServerWerkaNotificationsFlow(t *testing.T) {
+	server := NewServer(NewERPAuthenticator(
+		&fakeERPClient{
+			telegramReceipts: []erpnext.PurchaseReceiptDraft{
+				{
+					Name:                 "MAT-PRE-0001",
+					Supplier:             "SUP-001",
+					SupplierName:         "Abdulloh",
+					SupplierDeliveryNote: "TG:+998900000000|25",
+					ItemCode:             "ITEM-001",
+					ItemName:             "Rice",
+					Qty:                  25,
+					UOM:                  "Kg",
+					PostingDate:          "2026-04-03 09:00:00",
+					Remarks:              "Accord Werka Aytilmagan: rejected",
+				},
+			},
+			customerDeliveryNotes: []erpnext.DeliveryNoteDraft{
+				{
+					Name:                "MAT-DN-0001",
+					Customer:            "CUS-001",
+					CustomerName:        "Aziz Market",
+					ItemCode:            "ITEM-010",
+					ItemName:            "Oil",
+					Qty:                 4,
+					UOM:                 "L",
+					Modified:            "2026-04-03 10:00:00",
+					DocStatus:           1,
+					AccordFlowState:     "1",
+					AccordCustomerState: "1",
+				},
+				{
+					Name:                 "MAT-DN-0002",
+					Customer:             "CUS-002",
+					CustomerName:         "Sardor Do'kon",
+					ItemCode:             "ITEM-011",
+					ItemName:             "Sugar",
+					Qty:                  6,
+					UOM:                  "Kg",
+					Modified:             "2026-04-03 11:00:00",
+					DocStatus:            1,
+					AccordFlowState:      "1",
+					AccordCustomerState:  "3",
+					AccordCustomerReason: "",
+				},
+			},
+			comments: map[string][]erpnext.Comment{
+				"MAT-PRE-0001": {
+					{
+						ID:        "COMM-001",
+						Content:   "Supplier\nTasdiqlayman",
+						CreatedAt: "2026-04-03 12:00:00",
+					},
+				},
+			},
+		},
+		"http://localhost:8000",
+		"key",
+		"secret",
+		"Stores - CH",
+		"10",
+		"20",
+		"20WERKA0001",
+		"+998901111111",
+		"Werka",
+		nil,
+		nil,
+	))
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleWerka,
+		DisplayName: "Werka",
+		Ref:         "werka",
+	})
+	if err != nil {
+		t.Fatalf("failed to create werka session: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/mobile/werka/notifications", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	var items []DispatchRecord
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(items) != 4 {
+		t.Fatalf("expected 4 notification items, got %d", len(items))
+	}
+
+	eventTypes := map[string]bool{}
+	for _, item := range items {
+		eventTypes[item.EventType] = true
+	}
+
+	if !eventTypes["customer_delivery_pending"] {
+		t.Fatalf("expected pending delivery notification, got %+v", items)
+	}
+	if !eventTypes["customer_delivery_confirmed"] {
+		t.Fatalf("expected confirmed delivery notification, got %+v", items)
+	}
+	if !eventTypes["supplier_ack"] {
+		t.Fatalf("expected supplier acknowledgment notification, got %+v", items)
+	}
+	if !eventTypes["werka_unannounced_rejected"] {
+		t.Fatalf("expected unannounced rejected notification, got %+v", items)
+	}
+}
+
 func TestServerAdminActivityStillRespectsLimit(t *testing.T) {
 	receipts := make([]erpnext.PurchaseReceiptDraft, 0, 40)
 	for index := 0; index < 40; index++ {

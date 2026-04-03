@@ -75,6 +75,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/mobile/werka/status-breakdown", s.handleWerkaStatusBreakdown)
 	mux.HandleFunc("/v1/mobile/werka/status-details", s.handleWerkaStatusDetails)
 	mux.HandleFunc("/v1/mobile/werka/pending", s.handleWerkaPending)
+	mux.HandleFunc("/v1/mobile/werka/notifications", s.handleWerkaNotifications)
 	mux.HandleFunc("/v1/mobile/werka/history", s.handleWerkaHistory)
 	mux.HandleFunc("/v1/mobile/werka/confirm", s.handleWerkaConfirm)
 	mux.HandleFunc("/v1/mobile/admin/settings", s.handleAdminSettings)
@@ -1259,6 +1260,24 @@ func (s *Server) handleWerkaHistory(w http.ResponseWriter, r *http.Request) {
 	items, err := s.auth.WerkaHistory(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "history fetch failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleWerkaNotifications(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.authorize(w, r)
+	if !ok {
+		return
+	}
+	if err := requireRole(principal, RoleWerka); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	items, err := s.auth.WerkaNotifications(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "werka notifications failed"})
 		return
 	}
 	writeJSON(w, http.StatusOK, items)

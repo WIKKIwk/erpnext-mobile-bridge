@@ -751,6 +751,49 @@ func (r *Reader) WerkaHistory(ctx context.Context) ([]core.DispatchRecord, error
 	return result, nil
 }
 
+func (r *Reader) WerkaNotifications(ctx context.Context) ([]core.DispatchRecord, error) {
+	const notificationLimit = 120
+
+	deliveryRows, err := r.deliveryNoteRowsLimited(ctx, "", notificationLimit)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]core.DispatchRecord, 0, len(deliveryRows))
+	for _, row := range deliveryRows {
+		record, ok := buildWerkaCustomerDeliveryNotificationDispatch(row)
+		if !ok {
+			continue
+		}
+		result = append(result, record)
+	}
+
+	acks, err := r.supplierAckEventsLimited(ctx, notificationLimit)
+	if err != nil {
+		return nil, err
+	}
+	result = append(result, acks...)
+
+	receipts, err := r.telegramReceiptRowsLimited(ctx, "", notificationLimit)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range receipts {
+		record, ok := buildWerkaUnannouncedNotificationDispatch(row)
+		if !ok {
+			continue
+		}
+		result = append(result, record)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedLabel > result[j].CreatedLabel
+	})
+	if len(result) > notificationLimit {
+		result = result[:notificationLimit]
+	}
+	return result, nil
+}
+
 func (r *Reader) telegramReceiptRows(ctx context.Context, supplierRef string) ([]purchaseReceiptSummaryRow, error) {
 	return r.telegramReceiptRowsLimited(ctx, supplierRef, 0)
 }
@@ -1079,6 +1122,51 @@ func buildCustomerResultDispatch(row deliveryNoteSummaryRow) (core.DispatchRecor
 		record.Highlight = "Customer mahsulotni rad etdi"
 	}
 	return record, true
+}
+
+func buildWerkaCustomerDeliveryNotificationDispatch(row deliveryNoteSummaryRow) (core.DispatchRecord, bool) {
+	if !deliveryVisible(row) {
+		return core.DispatchRecord{}, false
+	}
+	record := deliveryNoteRowToDispatchRecord(row)
+	switch record.Status {
+	case "accepted":
+		record.EventType = "customer_delivery_confirmed"
+		record.Highlight = "Customer mahsulotni qabul qildi"
+	case "partial":
+		record.EventType = "customer_delivery_partial"
+		record.Highlight = "Customer mahsulotning bir qismini qaytardi"
+	case "rejected":
+		record.EventType = "customer_delivery_rejected"
+		record.Highlight = "Customer mahsulotni rad etdi"
+	default:
+		record.EventType = "customer_delivery_pending"
+		record.Highlight = "Haridor javobi kutilmoqda"
+	}
+	return record, true
+}
+
+func buildWerkaUnannouncedNotificationDispatch(row purchaseReceiptSummaryRow) (core.DispatchRecord, bool) {
+	record := purchaseReceiptRowToDispatchRecord(row)
+	state := strings.TrimSpace(erpnext.ExtractWerkaUnannouncedState(row.Remarks))
+	switch state {
+	case "approved":
+		record.EventType = "werka_unannounced_approved"
+		record.Highlight = "Supplier aytilmagan molni tasdiqladi"
+		if strings.TrimSpace(record.Note) == "" {
+			record.Note = "Aytilmagan mol tasdiqlandi."
+		}
+		return record, true
+	case "rejected":
+		record.EventType = "werka_unannounced_rejected"
+		record.Highlight = "Supplier aytilmagan molni rad etdi"
+		if strings.TrimSpace(record.Note) == "" {
+			record.Note = "Supplier aytilmagan molni rad etdi."
+		}
+		return record, true
+	default:
+		return core.DispatchRecord{}, false
+	}
 }
 
 func customerDeliveryResultEventPrefix(id string) string {
