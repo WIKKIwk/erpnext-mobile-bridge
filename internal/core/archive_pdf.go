@@ -396,20 +396,15 @@ func drawMultilineText(img *image.RGBA, style textStyle, x, y int, text string, 
 }
 
 func drawCellText(page *image.RGBA, style textStyle, col archiveColumn, y, height int, text string, maxLines, lineHeight int) {
-	rect := image.Rect(col.x, y, col.x+col.width, y+height)
-	cell, ok := page.SubImage(rect).(*image.RGBA)
-	if !ok {
-		return
-	}
 	lines := wrapTextByWidth(style.face, text, col.width-28, maxLines)
 	for index, line := range lines {
-		d := &font.Drawer{
-			Dst:  cell,
-			Src:  image.NewUniform(style.color),
-			Face: style.face,
-			Dot:  fixed.P(14, 24+index*lineHeight),
-		}
-		d.DrawString(line)
+		drawText(
+			page,
+			style,
+			col.x+14,
+			y+24+index*lineHeight,
+			line,
+		)
 	}
 }
 
