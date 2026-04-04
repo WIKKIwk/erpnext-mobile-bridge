@@ -261,27 +261,27 @@ func loadArchiveFonts() (fontPack, error) {
 	if err != nil {
 		return fontPack{}, err
 	}
-	body, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 12, DPI: 144, Hinting: font.HintingFull})
+	body, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 10, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	bodyTight, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 10, DPI: 144, Hinting: font.HintingFull})
+	bodyTight, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 8, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	small, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 10, DPI: 144, Hinting: font.HintingFull})
+	small, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 8, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	smallTight, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 8, DPI: 144, Hinting: font.HintingFull})
+	smallTight, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 6, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	bold, err := opentype.NewFace(boldTTF, &opentype.FaceOptions{Size: 12, DPI: 144, Hinting: font.HintingFull})
+	bold, err := opentype.NewFace(boldTTF, &opentype.FaceOptions{Size: 10, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	boldTight, err := opentype.NewFace(boldTTF, &opentype.FaceOptions{Size: 10, DPI: 144, Hinting: font.HintingFull})
+	boldTight, err := opentype.NewFace(boldTTF, &opentype.FaceOptions{Size: 8, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
@@ -354,16 +354,16 @@ func drawArchiveTableHeader(page *image.RGBA, fonts fontPack, y int) int {
 	border := color.RGBA{99, 116, 142, 255}
 	headerStyle := textStyle{face: fonts.bold, color: color.White}
 	for _, col := range archiveColumns {
-		drawCellBox(page, col, y, 58, headerBg, border)
-		drawSingleCellLine(page, headerStyle, col, y, 58, col.label)
+		drawCellBox(page, col, y, 48, headerBg, border)
+		drawSingleCellLine(page, headerStyle, col, y, 48, col.label)
 	}
-	return y + 58
+	return y + 48
 }
 
 func archiveRowHeight(row tableRow, fonts fontPack) int {
 	_ = row
 	_ = fonts
-	return 46
+	return 34
 }
 
 func drawArchiveRow(page *image.RGBA, fonts fontPack, row tableRow, y int, zebra bool) {
