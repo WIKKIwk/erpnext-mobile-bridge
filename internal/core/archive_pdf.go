@@ -228,10 +228,10 @@ func renderArchivePages(principal Principal, report WerkaArchiveResponse, report
 	for index, row := range rows {
 		height := archiveRowHeight(row, fonts)
 		if y+height > 1630 {
-			drawArchiveFooter(page, fonts, len(pages)+1)
-			pages = append(pages, page)
-			page, y = newArchivePage(pageWidth, pageHeight)
-			drawArchiveWatermark(page, fonts)
+		drawArchiveFooter(page, fonts, len(pages)+1, reportID, verifyCode)
+		pages = append(pages, page)
+		page, y = newArchivePage(pageWidth, pageHeight)
+		drawArchiveWatermark(page, fonts)
 			y = drawArchiveHeader(page, fonts, reportTitle, periodTitle, generatedBy, report, reportID, verifyCode, verifyURL, y)
 			y = drawArchiveSummary(page, fonts, report.Summary, y)
 			y = drawArchiveTableHeader(page, fonts, y)
@@ -239,7 +239,7 @@ func renderArchivePages(principal Principal, report WerkaArchiveResponse, report
 		drawArchiveRow(page, fonts, row, y, index%2 == 0)
 		y += height + 8
 	}
-	drawArchiveFooter(page, fonts, len(pages)+1)
+	drawArchiveFooter(page, fonts, len(pages)+1, reportID, verifyCode)
 	pages = append(pages, page)
 	return pages, nil
 }
@@ -311,9 +311,21 @@ func newArchivePage(pageWidth, pageHeight int) (*image.RGBA, int) {
 func drawArchiveWatermark(page *image.RGBA, fonts fontPack) {
 	watermarkStyle := textStyle{
 		face:  fonts.watermark,
-		color: color.RGBA{140, 128, 108, 8},
+		color: color.RGBA{140, 128, 108, 18},
 	}
-	drawText(page, watermarkStyle, 340, 1540, "ACCORD ARCHIVE")
+	lines := []struct {
+		x int
+		y int
+		s string
+	}{
+		{320, 420, "ACCORD ARCHIVE"},
+		{250, 820, "FLATTENED STATIC COPY"},
+		{320, 1220, "ACCORD ARCHIVE"},
+		{250, 1540, "VERIFY BEFORE TRUST"},
+	}
+	for _, line := range lines {
+		drawText(page, watermarkStyle, line.x, line.y, line.s)
+	}
 }
 
 func drawArchiveHeader(page *image.RGBA, fonts fontPack, reportTitle, periodTitle, generatedBy string, report WerkaArchiveResponse, reportID, verifyCode, verifyURL string, y int) int {
@@ -331,9 +343,10 @@ func drawArchiveHeader(page *image.RGBA, fonts fontPack, reportTitle, periodTitl
 	fillRect(page, 805, y+34, 350, 188, color.RGBA{247, 243, 234, 255})
 	dark := color.RGBA{31, 37, 43, 255}
 	drawText(page, textStyle{face: fonts.bold, color: dark}, 830, y+74, "Compliance Panel")
-	drawText(page, textStyle{face: fonts.small, color: dark}, 830, y+106, "Report ID: "+reportID)
-	drawText(page, textStyle{face: fonts.small, color: dark}, 830, y+132, "Verify code: "+verifyCode)
-	drawMultilineText(page, textStyle{face: fonts.small, color: color.RGBA{80, 80, 80, 255}}, 830, y+160, "Verify URL: "+verifyURL, 270, 18)
+	drawText(page, textStyle{face: fonts.small, color: color.RGBA{80, 80, 80, 255}}, 830, y+100, "Mode: Flattened static copy")
+	drawText(page, textStyle{face: fonts.small, color: dark}, 830, y+126, "Report ID: "+reportID)
+	drawText(page, textStyle{face: fonts.small, color: dark}, 830, y+152, "Verify code: "+verifyCode)
+	drawMultilineText(page, textStyle{face: fonts.small, color: color.RGBA{80, 80, 80, 255}}, 830, y+178, "Verify URL: "+verifyURL, 270, 18)
 	return y + 290
 }
 
@@ -394,10 +407,11 @@ func drawArchiveRow(page *image.RGBA, fonts fontPack, row tableRow, y int, zebra
 	drawSingleCellLine(page, statusStyle, statusColumn, y, height, formatArchiveStatusLabel(row.status))
 }
 
-func drawArchiveFooter(page *image.RGBA, fonts fontPack, pageNumber int) {
+func drawArchiveFooter(page *image.RGBA, fonts fontPack, pageNumber int, reportID, verifyCode string) {
 	fillRect(page, 60, 1664, 1180, 30, color.RGBA{31, 37, 43, 255})
 	drawText(page, textStyle{face: fonts.small, color: color.RGBA{244, 238, 227, 255}}, 82, 1686, fmt.Sprintf("Page %d", pageNumber))
-	drawText(page, textStyle{face: fonts.small, color: color.RGBA{210, 202, 186, 255}}, 980, 1686, "Protected archive export")
+	rightText := fmt.Sprintf("Protected flattened export • %s • %s", strings.TrimSpace(reportID), strings.TrimSpace(verifyCode))
+	drawText(page, textStyle{face: fonts.small, color: color.RGBA{210, 202, 186, 255}}, 610, 1686, fitStringToWidth(&font.Drawer{Face: fonts.small}, rightText, 610))
 }
 
 func drawStatusPill(page *image.RGBA, fonts fontPack, x, y int, value string) {
