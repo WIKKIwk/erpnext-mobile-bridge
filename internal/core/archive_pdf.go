@@ -213,7 +213,7 @@ func renderArchivePages(principal Principal, report WerkaArchiveResponse, report
 	y = drawArchiveSummary(page, fonts, report.Summary, y)
 	y = drawArchiveTableHeader(page, fonts, y)
 	for index, row := range rows {
-		height := archiveRowHeight(row)
+		height := archiveRowHeight(row, fonts)
 		if y+height > 1630 {
 			drawArchiveFooter(page, fonts, len(pages)+1)
 			pages = append(pages, page)
@@ -324,58 +324,85 @@ func drawArchiveSummary(page *image.RGBA, fonts fontPack, summary WerkaArchiveSu
 }
 
 func drawArchiveTableHeader(page *image.RGBA, fonts fontPack, y int) int {
-	headerStyle := textStyle{face: fonts.bold, color: color.White}
 	fillRect(page, 60, y, 1180, 54, color.RGBA{48, 48, 48, 255})
-	drawText(page, headerStyle, dateColumn.x+16, y+34, "Sana")
-	drawText(page, headerStyle, docColumn.x+16, y+34, "Hujjat")
-	drawText(page, headerStyle, partyColumn.x+16, y+34, "Counterparty")
-	drawText(page, headerStyle, productColumn.x+16, y+34, "Mahsulot")
-	drawText(page, headerStyle, qtyColumn.x+16, y+34, "Miqdor")
-	drawText(page, headerStyle, statusColumn.x+16, y+34, "Status")
+	drawText(page, textStyle{face: fonts.bold, color: color.White}, 82, y+34, "Hisobot yozuvlari")
+	drawText(page, textStyle{face: fonts.small, color: color.RGBA{217, 211, 198, 255}}, 980, y+34, "Qty • Status")
 	return y + 72
 }
 
-func archiveRowHeight(row tableRow) int {
-	partyLines := wrappedLineCount(row.party, 28)
-	itemLines := wrappedLineCount(row.item+" • "+row.itemName, 36)
-	maxLines := partyLines
-	if itemLines > maxLines {
-		maxLines = itemLines
+func archiveRowHeight(row tableRow, fonts fontPack) int {
+	itemLines := wrapTextByWidth(fonts.bold, row.itemName, 380, 2)
+	if len(itemLines) > 1 {
+		return 118
 	}
-	if maxLines < 1 {
-		maxLines = 1
-	}
-	if maxLines > 2 {
-		maxLines = 2
-	}
-	return 28 + 24*maxLines + 14
+	return 98
 }
 
 func drawArchiveRow(page *image.RGBA, fonts fontPack, row tableRow, y int, zebra bool) {
-	bodyStyle := textStyle{face: fonts.body, color: color.Black}
-	smallStyle := textStyle{face: fonts.small, color: color.RGBA{92, 92, 92, 255}}
-	height := archiveRowHeight(row)
+	height := archiveRowHeight(row, fonts)
 	bg := color.RGBA{255, 255, 255, 255}
 	if zebra {
-		bg = color.RGBA{246, 244, 239, 255}
+		bg = color.RGBA{249, 247, 242, 255}
 	}
 	fillRect(page, 60, y, 1180, height, bg)
-	fillRect(page, 60, y+height-1, 1180, 1, color.RGBA{222, 218, 210, 255})
-	drawCellText(page, smallStyle, dateColumn, y, height, formatArchiveDate(row.date), 2, 16)
-	drawCellText(page, smallStyle, docColumn, y, height, row.docID, 2, 16)
-	drawCellText(page, bodyStyle, partyColumn, y, height, row.party, 2, 20)
-	drawCellText(page, bodyStyle, productColumn, y, height, row.item+" • "+row.itemName, 2, 20)
-	drawCellText(page, bodyStyle, qtyColumn, y, height, row.qty, 2, 20)
-	drawCellText(page, textStyle{face: fonts.bold, color: color.RGBA{31, 37, 43, 255}}, statusColumn, y, height, strings.ToUpper(row.status), 2, 20)
-	for _, col := range []archiveColumn{docColumn, partyColumn, productColumn, qtyColumn, statusColumn} {
-		fillRect(page, col.x, y+12, 1, height-24, color.RGBA{234, 230, 222, 255})
+	fillRect(page, 60, y, 8, height, color.RGBA{201, 167, 104, 255})
+	fillRect(page, 60, y+height-1, 1180, 1, color.RGBA{226, 221, 212, 255})
+
+	datePart, timePart := splitArchiveDate(row.date)
+	metaStyle := textStyle{face: fonts.small, color: color.RGBA{95, 95, 95, 255}}
+	mainStyle := textStyle{face: fonts.bold, color: color.RGBA{25, 25, 25, 255}}
+	bodyStyle := textStyle{face: fonts.body, color: color.RGBA{58, 58, 58, 255}}
+
+	drawText(page, metaStyle, 90, y+28, datePart)
+	if timePart != "" {
+		drawText(page, metaStyle, 90, y+48, timePart)
 	}
+	drawText(page, metaStyle, 90, y+74, truncatePDFLine(row.docID, 24))
+
+	itemLines := wrapTextByWidth(fonts.bold, row.itemName, 380, 2)
+	for idx, line := range itemLines {
+		drawText(page, mainStyle, 300, y+30+idx*22, line)
+	}
+	drawText(page, bodyStyle, 300, y+74, truncatePDFLine(row.party, 36))
+	drawText(page, metaStyle, 300, y+94, truncatePDFLine(row.item, 36))
+
+	drawText(page, textStyle{face: fonts.subtitle, color: color.RGBA{31, 37, 43, 255}}, 930, y+42, truncatePDFLine(row.qty, 12))
+	drawStatusPill(page, fonts, 930, y+56, formatArchiveStatusLabel(row.status))
 }
 
 func drawArchiveFooter(page *image.RGBA, fonts fontPack, pageNumber int) {
 	fillRect(page, 60, 1664, 1180, 30, color.RGBA{31, 37, 43, 255})
 	drawText(page, textStyle{face: fonts.small, color: color.RGBA{244, 238, 227, 255}}, 82, 1686, fmt.Sprintf("Page %d", pageNumber))
 	drawText(page, textStyle{face: fonts.small, color: color.RGBA{210, 202, 186, 255}}, 980, 1686, "Protected archive export")
+}
+
+func drawStatusPill(page *image.RGBA, fonts fontPack, x, y int, value string) {
+	w := 150
+	fillRect(page, x, y, w, 34, statusPillColor(value))
+	drawText(page, textStyle{face: fonts.small, color: color.White}, x+16, y+22, value)
+}
+
+func statusPillColor(value string) color.RGBA {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "pending":
+		return color.RGBA{173, 113, 37, 255}
+	case "accepted":
+		return color.RGBA{46, 125, 50, 255}
+	case "partial":
+		return color.RGBA{2, 119, 189, 255}
+	case "rejected", "cancelled":
+		return color.RGBA{183, 28, 28, 255}
+	default:
+		return color.RGBA{84, 84, 84, 255}
+	}
+}
+
+func formatArchiveStatusLabel(value string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return "-"
+	}
+	return strings.ToUpper(trimmed[:1]) + trimmed[1:]
 }
 
 func drawText(img *image.RGBA, style textStyle, x, y int, text string) {
@@ -501,6 +528,14 @@ func formatArchiveDate(value string) string {
 		return trimmed[:idx] + "\n" + strings.TrimSpace(trimmed[idx+1:])
 	}
 	return trimmed
+}
+
+func splitArchiveDate(value string) (string, string) {
+	trimmed := strings.TrimSpace(value)
+	if idx := strings.Index(trimmed, " "); idx > 0 {
+		return trimmed[:idx], strings.TrimSpace(trimmed[idx+1:])
+	}
+	return trimmed, ""
 }
 
 func fillRect(img *image.RGBA, x, y, w, h int, c color.Color) {
