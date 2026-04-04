@@ -261,27 +261,27 @@ func loadArchiveFonts() (fontPack, error) {
 	if err != nil {
 		return fontPack{}, err
 	}
-	body, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 10, DPI: 144, Hinting: font.HintingFull})
+	body, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 8, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	bodyTight, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 8, DPI: 144, Hinting: font.HintingFull})
+	bodyTight, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 6, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	small, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 8, DPI: 144, Hinting: font.HintingFull})
+	small, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 7, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	smallTight, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 6, DPI: 144, Hinting: font.HintingFull})
+	smallTight, err := opentype.NewFace(regularTTF, &opentype.FaceOptions{Size: 5, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	bold, err := opentype.NewFace(boldTTF, &opentype.FaceOptions{Size: 10, DPI: 144, Hinting: font.HintingFull})
+	bold, err := opentype.NewFace(boldTTF, &opentype.FaceOptions{Size: 8, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
-	boldTight, err := opentype.NewFace(boldTTF, &opentype.FaceOptions{Size: 8, DPI: 144, Hinting: font.HintingFull})
+	boldTight, err := opentype.NewFace(boldTTF, &opentype.FaceOptions{Size: 6, DPI: 144, Hinting: font.HintingFull})
 	if err != nil {
 		return fontPack{}, err
 	}
@@ -354,16 +354,16 @@ func drawArchiveTableHeader(page *image.RGBA, fonts fontPack, y int) int {
 	border := color.RGBA{99, 116, 142, 255}
 	headerStyle := textStyle{face: fonts.bold, color: color.White}
 	for _, col := range archiveColumns {
-		drawCellBox(page, col, y, 48, headerBg, border)
-		drawSingleCellLine(page, headerStyle, col, y, 48, col.label)
+		drawCellBox(page, col, y, 40, headerBg, border)
+		drawSingleCellLine(page, headerStyle, col, y, 40, col.label)
 	}
-	return y + 48
+	return y + 40
 }
 
 func archiveRowHeight(row tableRow, fonts fontPack) int {
 	_ = row
 	_ = fonts
-	return 34
+	return 28
 }
 
 func drawArchiveRow(page *image.RGBA, fonts fontPack, row tableRow, y int, zebra bool) {
@@ -423,10 +423,23 @@ func statusPillColor(value string) color.RGBA {
 
 func formatArchiveStatusLabel(value string) string {
 	trimmed := strings.TrimSpace(strings.ToLower(value))
-	if trimmed == "" {
-		return "-"
+	switch trimmed {
+	case "pending":
+		return "Pend."
+	case "accepted":
+		return "Acc."
+	case "partial":
+		return "Part."
+	case "rejected":
+		return "Rej."
+	case "cancelled":
+		return "Canc."
+	default:
+		if trimmed == "" {
+			return "-"
+		}
+		return strings.ToUpper(trimmed[:1]) + trimmed[1:]
 	}
-	return strings.ToUpper(trimmed[:1]) + trimmed[1:]
 }
 
 func drawText(img *image.RGBA, style textStyle, x, y int, text string) {
@@ -457,7 +470,7 @@ func drawCellBox(page *image.RGBA, col archiveColumn, y, height int, fill, borde
 func drawSingleCellLine(page *image.RGBA, style textStyle, col archiveColumn, y, height int, value string) {
 	drawer := &font.Drawer{Face: style.face}
 	fitted := fitStringToWidth(drawer, value, col.width-24)
-	textY := y + (height / 2) + 4
+	textY := y + (height / 2) + 2
 	drawText(page, style, col.x+12, textY, fitted)
 }
 
@@ -588,6 +601,12 @@ func compactArchiveDate(value string) string {
 		timePart := strings.TrimSpace(trimmed[idx+1:])
 		if dot := strings.Index(timePart, "."); dot > 0 {
 			timePart = timePart[:dot]
+		}
+		if len(datePart) >= 10 {
+			datePart = datePart[5:]
+		}
+		if len(timePart) >= 5 {
+			timePart = timePart[:5]
 		}
 		return datePart + " " + timePart
 	}
