@@ -839,8 +839,16 @@ func (a *ERPAuthenticator) WerkaArchive(ctx context.Context, kind WerkaArchiveKi
 	if err != nil {
 		return WerkaArchiveResponse{}, err
 	}
+	return a.WerkaArchiveForRange(ctx, kind, period, from, to)
+}
+
+func (a *ERPAuthenticator) WerkaArchiveForRange(ctx context.Context, kind WerkaArchiveKind, period WerkaArchivePeriod, from, to time.Time) (WerkaArchiveResponse, error) {
+	if from.IsZero() || to.IsZero() || to.Before(from) {
+		return WerkaArchiveResponse{}, ErrInvalidInput
+	}
 
 	var items []DispatchRecord
+	var err error
 	if a.reader != nil {
 		readerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
@@ -876,6 +884,32 @@ func resolveWerkaArchiveRange(period WerkaArchivePeriod) (time.Time, time.Time, 
 	default:
 		return time.Time{}, time.Time{}, ErrInvalidInput
 	}
+}
+
+func ResolveWerkaArchiveCustomDateRange(fromDate, toDate string) (time.Time, time.Time, error) {
+	location, err := time.LoadLocation("Asia/Tashkent")
+	if err != nil {
+		location = time.FixedZone("Asia/Tashkent", 5*60*60)
+	}
+	fromDate = strings.TrimSpace(fromDate)
+	toDate = strings.TrimSpace(toDate)
+	if fromDate == "" || toDate == "" {
+		return time.Time{}, time.Time{}, ErrInvalidInput
+	}
+	startDay, err := time.ParseInLocation("2006-01-02", fromDate, location)
+	if err != nil {
+		return time.Time{}, time.Time{}, ErrInvalidInput
+	}
+	endDay, err := time.ParseInLocation("2006-01-02", toDate, location)
+	if err != nil {
+		return time.Time{}, time.Time{}, ErrInvalidInput
+	}
+	start := time.Date(startDay.Year(), startDay.Month(), startDay.Day(), 0, 0, 0, 0, location)
+	end := time.Date(endDay.Year(), endDay.Month(), endDay.Day(), 23, 59, 59, int(time.Second-time.Nanosecond), location)
+	if end.Before(start) {
+		return time.Time{}, time.Time{}, ErrInvalidInput
+	}
+	return start, end, nil
 }
 
 func buildWerkaArchiveResponse(kind WerkaArchiveKind, period WerkaArchivePeriod, from, to time.Time, items []DispatchRecord) WerkaArchiveResponse {

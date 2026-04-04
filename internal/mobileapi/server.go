@@ -1379,7 +1379,17 @@ func (s *Server) handleWerkaArchive(w http.ResponseWriter, r *http.Request) {
 
 	kind := WerkaArchiveKind(strings.TrimSpace(r.URL.Query().Get("kind")))
 	period := WerkaArchivePeriod(strings.TrimSpace(r.URL.Query().Get("period")))
-	response, err := s.auth.WerkaArchive(r.Context(), kind, period)
+	from, to, hasCustomRange, err := parseWerkaArchiveDateRange(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid input"})
+		return
+	}
+	var response WerkaArchiveResponse
+	if hasCustomRange {
+		response, err = s.auth.WerkaArchiveForRange(r.Context(), kind, WerkaArchivePeriodCustom, from, to)
+	} else {
+		response, err = s.auth.WerkaArchive(r.Context(), kind, period)
+	}
 	if err != nil {
 		if errors.Is(err, ErrInvalidInput) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid input"})
@@ -1403,7 +1413,17 @@ func (s *Server) handleWerkaArchivePDF(w http.ResponseWriter, r *http.Request) {
 
 	kind := WerkaArchiveKind(strings.TrimSpace(r.URL.Query().Get("kind")))
 	period := WerkaArchivePeriod(strings.TrimSpace(r.URL.Query().Get("period")))
-	file, err := s.auth.WerkaArchivePDF(r.Context(), principal, kind, period)
+	from, to, hasCustomRange, err := parseWerkaArchiveDateRange(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid input"})
+		return
+	}
+	var file GeneratedFile
+	if hasCustomRange {
+		file, err = s.auth.WerkaArchivePDFForRange(r.Context(), principal, kind, from, to)
+	} else {
+		file, err = s.auth.WerkaArchivePDF(r.Context(), principal, kind, period)
+	}
 	if err != nil {
 		if errors.Is(err, ErrInvalidInput) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid input"})
@@ -1430,6 +1450,19 @@ func (s *Server) handleWerkaArchivePDF(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(file.Body)
+}
+
+func parseWerkaArchiveDateRange(r *http.Request) (time.Time, time.Time, bool, error) {
+	fromDate := strings.TrimSpace(r.URL.Query().Get("from"))
+	toDate := strings.TrimSpace(r.URL.Query().Get("to"))
+	if fromDate == "" && toDate == "" {
+		return time.Time{}, time.Time{}, false, nil
+	}
+	from, to, err := ResolveWerkaArchiveCustomDateRange(fromDate, toDate)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, err
+	}
+	return from, to, true, nil
 }
 
 func (s *Server) handleWerkaArchivePDFVerify(w http.ResponseWriter, r *http.Request) {

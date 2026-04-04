@@ -5,10 +5,11 @@ import "mobile_server/internal/core"
 type PrincipalRole = core.PrincipalRole
 
 const (
-	RoleSupplier = core.RoleSupplier
-	RoleWerka    = core.RoleWerka
-	RoleCustomer = core.RoleCustomer
-	RoleAdmin    = core.RoleAdmin
+	RoleSupplier             = core.RoleSupplier
+	RoleWerka                = core.RoleWerka
+	RoleCustomer             = core.RoleCustomer
+	RoleAdmin                = core.RoleAdmin
+	WerkaArchivePeriodCustom = core.WerkaArchivePeriodCustom
 )
 
 type Principal = core.Principal
@@ -34,6 +35,7 @@ type WerkaArchivePeriod = core.WerkaArchivePeriod
 type ArchiveTotalByUOM = core.ArchiveTotalByUOM
 type WerkaArchiveSummary = core.WerkaArchiveSummary
 type WerkaArchiveResponse = core.WerkaArchiveResponse
+type GeneratedFile = core.GeneratedFile
 type ReportVerifyResponse = core.ReportVerifyResponse
 type CreateDispatchRequest = core.CreateDispatchRequest
 type ConfirmReceiptRequest = core.ConfirmReceiptRequest
@@ -64,3 +66,4 @@ type AdminSupplierItemMutationRequest = core.AdminSupplierItemMutationRequest
 type AdminCreateItemRequest = core.AdminCreateItemRequest
 
 var ErrInsufficientStock = core.ErrInsufficientStock
+var ResolveWerkaArchiveCustomDateRange = core.ResolveWerkaArchiveCustomDateRange

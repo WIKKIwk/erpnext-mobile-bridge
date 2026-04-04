@@ -2274,6 +2274,85 @@ func TestServerWerkaArchiveSentDaily(t *testing.T) {
 	}
 }
 
+func TestServerWerkaArchiveSentCustomRange(t *testing.T) {
+	server := NewServer(NewERPAuthenticator(
+		&fakeERPClient{
+			customers: []erpnext.Customer{
+				{ID: "CUS-001", Name: "Customer One"},
+			},
+			customerDeliveryNotes: []erpnext.DeliveryNoteDraft{
+				{
+					Name:                "MAT-DN-APRIL",
+					Customer:            "CUS-001",
+					CustomerName:        "Customer One",
+					ItemCode:            "ITEM-001",
+					ItemName:            "Rice",
+					Qty:                 3,
+					UOM:                 "Kg",
+					Modified:            "2026-04-03 14:20:00",
+					DocStatus:           1,
+					AccordFlowState:     "1",
+					AccordCustomerState: "1",
+				},
+				{
+					Name:                "MAT-DN-MARCH",
+					Customer:            "CUS-001",
+					CustomerName:        "Customer One",
+					ItemCode:            "ITEM-002",
+					ItemName:            "Oil",
+					Qty:                 5,
+					UOM:                 "Kg",
+					Modified:            "2026-03-01 10:00:00",
+					DocStatus:           1,
+					AccordFlowState:     "1",
+					AccordCustomerState: "1",
+				},
+			},
+		},
+		"http://localhost:8000",
+		"key",
+		"secret",
+		"Stores - CH",
+		"10",
+		"20",
+		"20WERKA0001",
+		"+998901111111",
+		"Werka",
+		nil,
+		nil,
+	))
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleWerka,
+		DisplayName: "Werka",
+		Ref:         "werka",
+	})
+	if err != nil {
+		t.Fatalf("failed to create werka session: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/mobile/werka/archive?kind=sent&from=2026-04-01&to=2026-04-30", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	var result WerkaArchiveResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode archive response: %v", err)
+	}
+	if result.Period != WerkaArchivePeriodCustom {
+		t.Fatalf("expected custom period, got %+v", result)
+	}
+	if len(result.Items) != 1 || result.Items[0].ID != "MAT-DN-APRIL" {
+		t.Fatalf("unexpected custom range items: %+v", result.Items)
+	}
+	if result.From.IsZero() || result.To.IsZero() {
+		t.Fatalf("expected non-zero custom range envelope: %+v", result)
+	}
+}
+
 func TestServerWerkaArchivePDFSentDaily(t *testing.T) {
 	now := time.Now().In(time.FixedZone("Asia/Tashkent", 5*60*60))
 	server := NewServer(NewERPAuthenticator(

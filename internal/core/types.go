@@ -172,6 +172,7 @@ const (
 	WerkaArchivePeriodDaily   WerkaArchivePeriod = "daily"
 	WerkaArchivePeriodMonthly WerkaArchivePeriod = "monthly"
 	WerkaArchivePeriodYearly  WerkaArchivePeriod = "yearly"
+	WerkaArchivePeriodCustom  WerkaArchivePeriod = "custom"
 )
 
 type ArchiveTotalByUOM struct {

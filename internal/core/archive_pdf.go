@@ -29,6 +29,18 @@ func (a *ERPAuthenticator) WerkaArchivePDF(ctx context.Context, principal Princi
 	if err != nil {
 		return GeneratedFile{}, err
 	}
+	return a.buildWerkaArchivePDF(principal, kind, period, report)
+}
+
+func (a *ERPAuthenticator) WerkaArchivePDFForRange(ctx context.Context, principal Principal, kind WerkaArchiveKind, from, to time.Time) (GeneratedFile, error) {
+	report, err := a.WerkaArchiveForRange(ctx, kind, WerkaArchivePeriodCustom, from, to)
+	if err != nil {
+		return GeneratedFile{}, err
+	}
+	return a.buildWerkaArchivePDF(principal, kind, WerkaArchivePeriodCustom, report)
+}
+
+func (a *ERPAuthenticator) buildWerkaArchivePDF(principal Principal, kind WerkaArchiveKind, period WerkaArchivePeriod, report WerkaArchiveResponse) (GeneratedFile, error) {
 	reportID := buildArchiveReportID(kind)
 	verifyCode, err := buildArchiveVerifyCode()
 	if err != nil {
@@ -573,6 +585,8 @@ func archivePeriodTitle(period WerkaArchivePeriod) string {
 		return "Kunlik"
 	case WerkaArchivePeriodMonthly:
 		return "Oylik"
+	case WerkaArchivePeriodCustom:
+		return "Sana oralig‘i"
 	default:
 		return "Yillik"
 	}
