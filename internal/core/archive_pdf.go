@@ -283,11 +283,9 @@ func newArchivePage(pageWidth, pageHeight int) (*image.RGBA, int) {
 func drawArchiveWatermark(page *image.RGBA, fonts fontPack) {
 	watermarkStyle := textStyle{
 		face:  fonts.watermark,
-		color: color.RGBA{140, 128, 108, 18},
+		color: color.RGBA{140, 128, 108, 8},
 	}
-	for y := 540; y <= 1500; y += 420 {
-		drawText(page, watermarkStyle, 300, y, "ACCORD ARCHIVE")
-	}
+	drawText(page, watermarkStyle, 340, 1540, "ACCORD ARCHIVE")
 }
 
 func drawArchiveHeader(page *image.RGBA, fonts fontPack, reportTitle, periodTitle, generatedBy string, report WerkaArchiveResponse, reportID, verifyCode, verifyURL string, y int) int {
@@ -331,11 +329,19 @@ func drawArchiveTableHeader(page *image.RGBA, fonts fontPack, y int) int {
 }
 
 func archiveRowHeight(row tableRow, fonts fontPack) int {
-	itemLines := wrapTextByWidth(fonts.bold, row.itemName, 380, 2)
-	if len(itemLines) > 1 {
-		return 118
+	title := archivePrimaryTitle(row)
+	titleLines := wrapTextByWidth(fonts.bold, title, 520, 2)
+	lines := len(titleLines)
+	if line := archiveSecondaryLine1(row, title); line != "" {
+		lines++
 	}
-	return 98
+	if line := archiveSecondaryLine2(row, title); line != "" {
+		lines++
+	}
+	if lines < 3 {
+		return 96
+	}
+	return 116
 }
 
 func drawArchiveRow(page *image.RGBA, fonts fontPack, row tableRow, y int, zebra bool) {
@@ -359,12 +365,19 @@ func drawArchiveRow(page *image.RGBA, fonts fontPack, row tableRow, y int, zebra
 	}
 	drawText(page, metaStyle, 90, y+74, truncatePDFLine(row.docID, 24))
 
-	itemLines := wrapTextByWidth(fonts.bold, row.itemName, 380, 2)
+	title := archivePrimaryTitle(row)
+	itemLines := wrapTextByWidth(fonts.bold, title, 520, 2)
 	for idx, line := range itemLines {
 		drawText(page, mainStyle, 300, y+30+idx*22, line)
 	}
-	drawText(page, bodyStyle, 300, y+74, truncatePDFLine(row.party, 36))
-	drawText(page, metaStyle, 300, y+94, truncatePDFLine(row.item, 36))
+	nextY := y + 30 + len(itemLines)*22
+	if line := archiveSecondaryLine1(row, title); line != "" {
+		drawText(page, bodyStyle, 300, nextY, truncatePDFLine(line, 48))
+		nextY += 20
+	}
+	if line := archiveSecondaryLine2(row, title); line != "" {
+		drawText(page, metaStyle, 300, nextY, truncatePDFLine(line, 48))
+	}
 
 	drawText(page, textStyle{face: fonts.subtitle, color: color.RGBA{31, 37, 43, 255}}, 930, y+42, truncatePDFLine(row.qty, 12))
 	drawStatusPill(page, fonts, 930, y+56, formatArchiveStatusLabel(row.status))
@@ -536,6 +549,44 @@ func splitArchiveDate(value string) (string, string) {
 		return trimmed[:idx], strings.TrimSpace(trimmed[idx+1:])
 	}
 	return trimmed, ""
+}
+
+func archivePrimaryTitle(row tableRow) string {
+	itemName := strings.TrimSpace(row.itemName)
+	itemCode := strings.TrimSpace(row.item)
+	party := strings.TrimSpace(row.party)
+	if itemName != "" && !strings.EqualFold(itemName, party) {
+		return itemName
+	}
+	if itemCode != "" && !strings.EqualFold(itemCode, party) {
+		return itemCode
+	}
+	if itemName != "" {
+		return itemName
+	}
+	if itemCode != "" {
+		return itemCode
+	}
+	return party
+}
+
+func archiveSecondaryLine1(row tableRow, primary string) string {
+	party := strings.TrimSpace(row.party)
+	if party != "" && !strings.EqualFold(party, primary) {
+		return party
+	}
+	return ""
+}
+
+func archiveSecondaryLine2(row tableRow, primary string) string {
+	itemCode := strings.TrimSpace(row.item)
+	party := strings.TrimSpace(row.party)
+	if itemCode != "" &&
+		!strings.EqualFold(itemCode, primary) &&
+		!strings.EqualFold(itemCode, party) {
+		return itemCode
+	}
+	return ""
 }
 
 func fillRect(img *image.RGBA, x, y, w, h int, c color.Color) {
