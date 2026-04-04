@@ -2,7 +2,6 @@ package core
 
 import (
 	"bytes"
-	"compress/zlib"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -13,6 +12,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"image/jpeg"
 	"net/url"
 	"strings"
 	"time"
@@ -233,6 +233,7 @@ func renderArchivePages(principal Principal, report WerkaArchiveResponse, report
 	maxTableY := pageHeight - footerHeight - tableBottomPad
 	for idx, row := range rows {
 		if y+rowHeight > maxTableY {
+			applyArchiveAntiOCR(page)
 			drawArchiveFooter(page, fonts, leftMargin, pageHeight-footerHeight, contentWidth, len(pages)+1, reportID, verifyCode, verifyURL)
 			pages = append(pages, page)
 			page, y = newPage()
@@ -240,6 +241,7 @@ func renderArchivePages(principal Principal, report WerkaArchiveResponse, report
 		drawArchiveRow(page, fonts, row, y, rowHeight, idx%2 == 0)
 		y += rowHeight + rowSpacing
 	}
+	applyArchiveAntiOCR(page)
 	drawArchiveFooter(page, fonts, leftMargin, pageHeight-footerHeight, contentWidth, len(pages)+1, reportID, verifyCode, verifyURL)
 	pages = append(pages, page)
 	return pages, nil
@@ -527,18 +529,9 @@ func buildRasterPDF(pages []*image.RGBA) []byte {
 func buildImageObject(img *image.RGBA) string {
 	w := img.Bounds().Dx()
 	h := img.Bounds().Dy()
-	raw := make([]byte, 0, w*h*3)
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			offset := img.PixOffset(x, y)
-			raw = append(raw, img.Pix[offset], img.Pix[offset+1], img.Pix[offset+2])
-		}
-	}
-	var compressed bytes.Buffer
-	zw := zlib.NewWriter(&compressed)
-	_, _ = zw.Write(raw)
-	_ = zw.Close()
-	return fmt.Sprintf("<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\nstream\n%s\nendstream", w, h, compressed.Len(), compressed.String())
+	var encoded bytes.Buffer
+	_ = jpeg.Encode(&encoded, img, &jpeg.Options{Quality: 82})
+	return fmt.Sprintf("<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n%s\nendstream", w, h, encoded.Len(), encoded.String())
 }
 
 func buildArchiveReportID(kind WerkaArchiveKind) string {
@@ -583,4 +576,33 @@ func archivePeriodTitle(period WerkaArchivePeriod) string {
 	default:
 		return "Yillik"
 	}
+}
+
+func applyArchiveAntiOCR(img *image.RGBA) {
+	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			offset := img.PixOffset(x, y)
+			r := img.Pix[offset]
+			g := img.Pix[offset+1]
+			b := img.Pix[offset+2]
+
+			if (x+y)%19 == 0 {
+				img.Pix[offset] = mixChannel(r, 248, 10)
+				img.Pix[offset+1] = mixChannel(g, 246, 10)
+				img.Pix[offset+2] = mixChannel(b, 241, 10)
+				continue
+			}
+			if y%4 == 0 {
+				img.Pix[offset] = mixChannel(r, 244, 4)
+				img.Pix[offset+1] = mixChannel(g, 243, 4)
+				img.Pix[offset+2] = mixChannel(b, 239, 4)
+			}
+		}
+	}
+}
+
+func mixChannel(base uint8, overlay uint8, alpha uint8) uint8 {
+	keep := int(255 - alpha)
+	return uint8((int(base)*keep + int(overlay)*int(alpha)) / 255)
 }
