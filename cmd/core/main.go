@@ -99,6 +99,11 @@ func main() {
 		service,
 		mobileapi.NewPersistentSessionManager(sessionStorePath, sessionTTL),
 	)
+	server.SetWerkaAISearchConfig(
+		strings.TrimSpace(os.Getenv("GEMINI_API_KEY")),
+		strings.TrimSpace(os.Getenv("GEMINI_VISION_MODEL")),
+		cfg.RequestTimeout,
+	)
 	log.Printf("core listening on %s", addr)
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
 		log.Fatalf("core stopped: %v", err)
