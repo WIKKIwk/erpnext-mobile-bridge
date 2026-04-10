@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -543,6 +544,49 @@ func TestCreateDraftAndSubmitPurchaseReceipt(t *testing.T) {
 	}
 	if submitPayload["doc"] == nil {
 		t.Fatalf("unexpected submit payload: %+v", submitPayload)
+	}
+}
+
+func TestEnsureDeliveryNoteStateFieldsCachesSuccessfulCheck(t *testing.T) {
+	var getCalls int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/resource/Custom Field":
+			if r.Method != http.MethodGet {
+				t.Fatalf("unexpected method for custom field check: %s", r.Method)
+			}
+			atomic.AddInt32(&getCalls, 1)
+			_, _ = w.Write([]byte(`{"data":[
+				{"name":"CF-001","fieldname":"accord_flow_state","label":"Accord Flow State","fieldtype":"Int","insert_after":"remarks","hidden":1,"read_only":1,"allow_on_submit":1,"no_copy":1,"options":""},
+				{"name":"CF-002","fieldname":"accord_customer_state","label":"Accord Customer State","fieldtype":"Int","insert_after":"accord_flow_state","hidden":1,"read_only":1,"allow_on_submit":1,"no_copy":1,"options":""},
+				{"name":"CF-003","fieldname":"accord_customer_reason","label":"Accord Customer Reason","fieldtype":"Small Text","insert_after":"accord_customer_state","hidden":1,"read_only":1,"allow_on_submit":1,"no_copy":1,"options":""},
+				{"name":"CF-004","fieldname":"accord_delivery_actor","label":"Accord Delivery Actor","fieldtype":"Data","insert_after":"accord_customer_reason","hidden":1,"read_only":1,"allow_on_submit":1,"no_copy":1,"options":""},
+				{"name":"CF-005","fieldname":"accord_status_section","label":"Accord Status","fieldtype":"Section Break","insert_after":"posting_time","hidden":0,"read_only":1,"allow_on_submit":1,"no_copy":1,"options":""},
+				{"name":"CF-006","fieldname":"accord_ui_status","label":"Accord UI Status","fieldtype":"Select","insert_after":"accord_status_section","hidden":0,"read_only":1,"allow_on_submit":1,"no_copy":1,"options":"pending\nconfirm\npartial\nrejected"}
+			]}`))
+		case r.URL.Path == "/api/resource/Custom Field/CF-001",
+			r.URL.Path == "/api/resource/Custom Field/CF-002",
+			r.URL.Path == "/api/resource/Custom Field/CF-003",
+			r.URL.Path == "/api/resource/Custom Field/CF-004",
+			r.URL.Path == "/api/resource/Custom Field/CF-005",
+			r.URL.Path == "/api/resource/Custom Field/CF-006":
+			t.Fatalf("did not expect custom field write request: %s %s", r.Method, r.URL.Path)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(&http.Client{Timeout: 3 * time.Second})
+	if err := client.EnsureDeliveryNoteStateFields(context.Background(), server.URL, "key", "secret"); err != nil {
+		t.Fatalf("first EnsureDeliveryNoteStateFields() error = %v", err)
+	}
+	if err := client.EnsureDeliveryNoteStateFields(context.Background(), server.URL, "key", "secret"); err != nil {
+		t.Fatalf("second EnsureDeliveryNoteStateFields() error = %v", err)
+	}
+	if got := atomic.LoadInt32(&getCalls); got != 1 {
+		t.Fatalf("expected exactly 1 custom field lookup, got %d", got)
 	}
 }
 

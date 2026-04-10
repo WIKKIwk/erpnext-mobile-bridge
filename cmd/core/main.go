@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -70,6 +71,20 @@ func main() {
 		"19621978",
 		config.NewDotEnvPersister(".env"),
 	)
+	if strings.TrimSpace(cfg.DefaultERPURL) != "" &&
+		strings.TrimSpace(cfg.DefaultERPAPIKey) != "" &&
+		strings.TrimSpace(cfg.DefaultERPAPISecret) != "" {
+		if err := erpClient.EnsureDeliveryNoteStateFields(
+			context.Background(),
+			cfg.DefaultERPURL,
+			cfg.DefaultERPAPIKey,
+			cfg.DefaultERPAPISecret,
+		); err != nil {
+			log.Printf("delivery note state field warmup failed: %v", err)
+		} else {
+			log.Printf("delivery note state fields warmed up")
+		}
+	}
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("ERP_DIRECT_READ_ENABLED")), "1") {
 		siteConfigPath := strings.TrimSpace(os.Getenv("ERP_DIRECT_SITE_CONFIG_PATH"))
 		if siteConfigPath != "" {

@@ -827,12 +827,6 @@ func TestCreateWerkaCustomerIssueMapsNegativeStockAndDeletesDraft(t *testing.T) 
 	var deletedName string
 
 	stub := &adminSuppliersERPStub{
-		getCustomer: func(ctx context.Context, baseURL, apiKey, apiSecret, id string) (erpnext.Customer, error) {
-			return erpnext.Customer{ID: "comfi", Name: "comfi"}, nil
-		},
-		listCustomerItems: func(ctx context.Context, baseURL, apiKey, apiSecret, customerRef, query string, limit int) ([]erpnext.Item, error) {
-			return []erpnext.Item{{Code: "pista93784", Name: "pista", UOM: "Kg"}}, nil
-		},
 		getItemsByCodes: func(ctx context.Context, baseURL, apiKey, apiSecret string, itemCodes []string) ([]erpnext.Item, error) {
 			return []erpnext.Item{{Code: "pista93784", Name: "pista", UOM: "Kg"}}, nil
 		},
@@ -881,6 +875,69 @@ func TestCreateWerkaCustomerIssueMapsNegativeStockAndDeletesDraft(t *testing.T) 
 	}
 	if deletedName != "MAT-DN-DRAFT-1" {
 		t.Fatalf("expected draft cleanup, got %q", deletedName)
+	}
+}
+
+func TestCreateWerkaCustomerIssueUsesSubmittedRefsDirectly(t *testing.T) {
+	var createInput erpnext.CreateDeliveryNoteInput
+
+	stub := &adminSuppliersERPStub{
+		getCustomer: func(ctx context.Context, baseURL, apiKey, apiSecret, id string) (erpnext.Customer, error) {
+			t.Fatalf("GetCustomer should not be called")
+			return erpnext.Customer{}, nil
+		},
+		listCustomerItems: func(ctx context.Context, baseURL, apiKey, apiSecret, customerRef, query string, limit int) ([]erpnext.Item, error) {
+			t.Fatalf("ListCustomerItems should not be called")
+			return nil, nil
+		},
+		getItemsByCodes: func(ctx context.Context, baseURL, apiKey, apiSecret string, itemCodes []string) ([]erpnext.Item, error) {
+			return []erpnext.Item{{Code: "ITEM-APP-001", Name: "Exact Item", UOM: "Kg"}}, nil
+		},
+		searchWarehouses: func(ctx context.Context, baseURL, apiKey, apiSecret, query string, limit int) ([]erpnext.Warehouse, error) {
+			return []erpnext.Warehouse{{Name: "Stores - A"}}, nil
+		},
+		searchCompanies: func(ctx context.Context, baseURL, apiKey, apiSecret string, limit int) ([]erpnext.Company, error) {
+			return []erpnext.Company{{Name: "Main Company"}}, nil
+		},
+		createDraftDeliveryNote: func(ctx context.Context, baseURL, apiKey, apiSecret string, input erpnext.CreateDeliveryNoteInput) (erpnext.DeliveryNoteResult, error) {
+			createInput = input
+			return erpnext.DeliveryNoteResult{Name: "MAT-DN-DRAFT-2"}, nil
+		},
+	}
+
+	auth := NewERPAuthenticator(
+		stub,
+		"http://erp.test",
+		"key",
+		"secret",
+		"Stores - A",
+		"10",
+		"20",
+		"",
+		"",
+		"",
+		nil,
+		nil,
+	)
+
+	record, err := auth.CreateWerkaCustomerIssue(
+		context.Background(),
+		Principal{Role: RoleWerka, Ref: "werka"},
+		"CUST-APP-001",
+		"ITEM-APP-001",
+		3,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createInput.Customer != "CUST-APP-001" {
+		t.Fatalf("expected submitted customer ref to be used directly, got %+v", createInput)
+	}
+	if createInput.ItemCode != "ITEM-APP-001" || createInput.Qty != 3 {
+		t.Fatalf("unexpected create input: %+v", createInput)
+	}
+	if record.CustomerRef != "CUST-APP-001" || record.CustomerName != "CUST-APP-001" {
+		t.Fatalf("unexpected record customer: %+v", record)
 	}
 }
 

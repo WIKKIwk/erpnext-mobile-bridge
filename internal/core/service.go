@@ -1487,25 +1487,9 @@ func (a *ERPAuthenticator) CreateWerkaCustomerIssue(ctx context.Context, princip
 	if principal.Role != RoleWerka {
 		return WerkaCustomerIssueRecord{}, ErrUnauthorized
 	}
-	customer, err := a.erp.GetCustomer(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(customerRef))
-	if err != nil {
-		return WerkaCustomerIssueRecord{}, err
-	}
-	items, err := a.erp.ListCustomerItems(ctx, a.baseURL, a.apiKey, a.apiSecret, customer.ID, "", 500)
-	if err != nil {
-		return WerkaCustomerIssueRecord{}, err
-	}
-	allowed := false
-	for _, item := range items {
-		if strings.EqualFold(strings.TrimSpace(item.Code), strings.TrimSpace(itemCode)) {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
-		return WerkaCustomerIssueRecord{}, fmt.Errorf("customer uchun mahsulot biriktirilmagan")
-	}
-	resolvedItems, err := a.erp.GetItemsByCodes(ctx, a.baseURL, a.apiKey, a.apiSecret, []string{strings.TrimSpace(itemCode)})
+	customerRef = strings.TrimSpace(customerRef)
+	itemCode = strings.TrimSpace(itemCode)
+	resolvedItems, err := a.erp.GetItemsByCodes(ctx, a.baseURL, a.apiKey, a.apiSecret, []string{itemCode})
 	if err != nil {
 		return WerkaCustomerIssueRecord{}, err
 	}
@@ -1522,10 +1506,10 @@ func (a *ERPAuthenticator) CreateWerkaCustomerIssue(ctx context.Context, princip
 		return WerkaCustomerIssueRecord{}, err
 	}
 	result, err := a.erp.CreateDraftDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, erpnext.CreateDeliveryNoteInput{
-		Customer:  customer.ID,
+		Customer:  customerRef,
 		Company:   company,
 		Warehouse: warehouse,
-		ItemCode:  strings.TrimSpace(itemCode),
+		ItemCode:  itemCode,
 		Qty:       qty,
 		UOM:       item.UOM,
 	})
@@ -1563,8 +1547,8 @@ func (a *ERPAuthenticator) CreateWerkaCustomerIssue(ctx context.Context, princip
 	}
 	return WerkaCustomerIssueRecord{
 		EntryID:      result.Name,
-		CustomerRef:  customer.ID,
-		CustomerName: customer.Name,
+		CustomerRef:  customerRef,
+		CustomerName: customerRef,
 		ItemCode:     item.Code,
 		ItemName:     item.Name,
 		UOM:          item.UOM,

@@ -239,6 +239,9 @@ func applyPartialDeliveryReturnQty(doc map[string]interface{}, returnedQty float
 }
 
 func (c *Client) EnsureDeliveryNoteStateFields(ctx context.Context, baseURL, apiKey, apiSecret string) error {
+	if c.deliveryNoteStateFieldsAreEnsured() {
+		return nil
+	}
 	normalized, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return err
@@ -372,6 +375,7 @@ func (c *Client) EnsureDeliveryNoteStateFields(ctx context.Context, baseURL, api
 			}
 		}
 	}
+	c.markDeliveryNoteStateFieldsEnsured()
 	return nil
 }
 
@@ -411,6 +415,18 @@ func (c *Client) DeleteDeliveryNote(ctx context.Context, baseURL, apiKey, apiSec
 	}
 	endpoint := normalized + "/api/resource/Delivery%20Note/" + url.PathEscape(strings.TrimSpace(name))
 	return c.doJSONRequest(ctx, http.MethodDelete, endpoint, apiKey, apiSecret, nil, nil)
+}
+
+func (c *Client) deliveryNoteStateFieldsAreEnsured() bool {
+	c.deliveryNoteStateFieldsMu.RLock()
+	defer c.deliveryNoteStateFieldsMu.RUnlock()
+	return c.deliveryNoteStateFieldsEnsured
+}
+
+func (c *Client) markDeliveryNoteStateFieldsEnsured() {
+	c.deliveryNoteStateFieldsMu.Lock()
+	c.deliveryNoteStateFieldsEnsured = true
+	c.deliveryNoteStateFieldsMu.Unlock()
 }
 
 func (c *Client) ListDeliveryNoteComments(ctx context.Context, baseURL, apiKey, apiSecret, name string, limit int) ([]Comment, error) {
