@@ -50,7 +50,6 @@ type AdminSupplier = core.AdminSupplier
 type AdminCreateSupplierRequest = core.AdminCreateSupplierRequest
 type AdminCreateCustomerRequest = core.AdminCreateCustomerRequest
 type AdminSupplierSummary = core.AdminSupplierSummary
-type AdminHomeAction = core.AdminHomeAction
 type AdminSuppliersPage = core.AdminSuppliersPage
 type AdminSupplierDetail = core.AdminSupplierDetail
 type AdminCustomerDetail = core.AdminCustomerDetail

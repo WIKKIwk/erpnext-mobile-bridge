@@ -299,14 +299,6 @@ type AdminSupplierSummary struct {
 	BlockedSuppliers int `json:"blocked_suppliers"`
 }
 
-type AdminHomeAction struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Subtitle    string `json:"subtitle"`
-	RouteName   string `json:"route_name"`
-	Highlighted bool   `json:"highlighted"`
-}
-
 type AdminSuppliersPage struct {
 	Summary   AdminSupplierSummary     `json:"summary"`
 	Suppliers []AdminSupplier          `json:"suppliers"`
