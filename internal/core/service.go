@@ -1083,6 +1083,31 @@ func (a *ERPAuthenticator) NotificationDetail(ctx context.Context, principal Pri
 	if err != nil {
 		return NotificationDetail{}, err
 	}
+	if a.reader != nil {
+		if reader, ok := a.reader.(interface {
+			NotificationDetailByReceiptID(ctx context.Context, receiptID string) (NotificationDetail, error)
+		}); ok {
+			detail, err := reader.NotificationDetailByReceiptID(ctx, receiptID)
+			if err == nil {
+				switch targetType {
+				case notificationTargetDeliveryNote:
+					if principal.Role == RoleCustomer &&
+						strings.TrimSpace(detail.Record.SupplierRef) != strings.TrimSpace(principal.Ref) {
+						return NotificationDetail{}, ErrUnauthorized
+					}
+				default:
+					if principal.Role == RoleCustomer {
+						return NotificationDetail{}, ErrUnauthorized
+					}
+					if principal.Role == RoleSupplier &&
+						strings.TrimSpace(detail.Record.SupplierRef) != strings.TrimSpace(principal.Ref) {
+						return NotificationDetail{}, ErrUnauthorized
+					}
+				}
+				return detail, nil
+			}
+		}
+	}
 	if targetType == notificationTargetDeliveryNote {
 		draft, err := a.erp.GetDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, targetName)
 		if err != nil {
@@ -1677,6 +1702,15 @@ func (a *ERPAuthenticator) RespondWerkaUnannouncedDraft(ctx context.Context, pri
 }
 
 func (a *ERPAuthenticator) AdminActivity(ctx context.Context, limit int) ([]DispatchRecord, error) {
+	if a.reader != nil {
+		items, err := a.reader.WerkaHistory(ctx)
+		if err == nil {
+			if limit > 0 && len(items) > limit {
+				items = items[:limit]
+			}
+			return items, nil
+		}
+	}
 	items, err := a.collectWerkaHistoryRecords(ctx)
 	if err != nil {
 		return nil, err

@@ -28,7 +28,7 @@ var (
 )
 
 func (a *ERPAuthenticator) AdminSupplierSummary(ctx context.Context, limit int) (AdminSupplierSummary, error) {
-	items, err := a.erp.SearchSuppliers(ctx, a.baseURL, a.apiKey, a.apiSecret, "", limit)
+	items, err := a.adminSupplierDirectoryEntries(ctx, 0)
 	if err != nil {
 		return AdminSupplierSummary{}, err
 	}
@@ -41,7 +41,7 @@ func (a *ERPAuthenticator) AdminSupplierSummary(ctx context.Context, limit int) 
 		TotalSuppliers: len(items),
 	}
 	for _, item := range items {
-		state := states[strings.TrimSpace(item.ID)]
+		state := states[strings.TrimSpace(item.Ref)]
 		if state.Blocked || state.Removed {
 			summary.BlockedSuppliers++
 			continue
@@ -56,7 +56,7 @@ func (a *ERPAuthenticator) AdminSuppliers(ctx context.Context, limit int) ([]Adm
 }
 
 func (a *ERPAuthenticator) AdminInactiveSuppliers(ctx context.Context, limit int) ([]AdminSupplier, error) {
-	items, err := a.erp.SearchSuppliers(ctx, a.baseURL, a.apiKey, a.apiSecret, "", limit)
+	items, err := a.adminSupplierDirectoryEntries(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +67,15 @@ func (a *ERPAuthenticator) AdminInactiveSuppliers(ctx context.Context, limit int
 
 	result := make([]AdminSupplier, 0, len(items))
 	for _, item := range items {
-		state := states[strings.TrimSpace(item.ID)]
+		state := states[strings.TrimSpace(item.Ref)]
 		if !state.Blocked && !state.Removed {
 			continue
 		}
-		adminItem, err := a.buildAdminSupplier(item, state)
+		adminItem, err := a.buildAdminSupplier(erpnext.Supplier{
+			ID:    item.Ref,
+			Name:  item.Name,
+			Phone: item.Phone,
+		}, state)
 		if err != nil {
 			continue
 		}
@@ -81,7 +85,7 @@ func (a *ERPAuthenticator) AdminInactiveSuppliers(ctx context.Context, limit int
 }
 
 func (a *ERPAuthenticator) adminSuppliersWithOptions(ctx context.Context, limit int, includeRemoved bool) ([]AdminSupplier, error) {
-	items, err := a.erp.SearchSuppliers(ctx, a.baseURL, a.apiKey, a.apiSecret, "", limit)
+	items, err := a.adminSupplierDirectoryEntries(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -92,12 +96,16 @@ func (a *ERPAuthenticator) adminSuppliersWithOptions(ctx context.Context, limit 
 
 	result := make([]AdminSupplier, 0, len(items))
 	for _, item := range items {
-		state := states[strings.TrimSpace(item.ID)]
+		state := states[strings.TrimSpace(item.Ref)]
 		if state.Removed && !includeRemoved {
 			continue
 		}
 
-		adminItem, err := a.buildAdminSupplier(item, state)
+		adminItem, err := a.buildAdminSupplier(erpnext.Supplier{
+			ID:    item.Ref,
+			Name:  item.Name,
+			Phone: item.Phone,
+		}, state)
 		if err != nil {
 			continue
 		}
@@ -197,7 +205,7 @@ func (a *ERPAuthenticator) AdminUnassignSupplierItem(ctx context.Context, ref, i
 }
 
 func (a *ERPAuthenticator) AdminAssignCustomerItem(ctx context.Context, ref, itemCode string) (AdminCustomerDetail, error) {
-	item, err := a.erp.GetCustomer(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(ref))
+	item, _, err := a.adminCustomerByRef(ctx, strings.TrimSpace(ref))
 	if err != nil {
 		return AdminCustomerDetail{}, err
 	}
@@ -215,7 +223,7 @@ func (a *ERPAuthenticator) AdminAssignCustomerItem(ctx context.Context, ref, ite
 }
 
 func (a *ERPAuthenticator) AdminUnassignCustomerItem(ctx context.Context, ref, itemCode string) (AdminCustomerDetail, error) {
-	item, err := a.erp.GetCustomer(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(ref))
+	item, _, err := a.adminCustomerByRef(ctx, strings.TrimSpace(ref))
 	if err != nil {
 		return AdminCustomerDetail{}, err
 	}
@@ -354,7 +362,7 @@ func (a *ERPAuthenticator) AdminRegenerateSupplierCode(ctx context.Context, ref 
 		return AdminSupplierDetail{}, err
 	}
 
-	items, err := a.erp.SearchSuppliers(ctx, a.baseURL, a.apiKey, a.apiSecret, "", 500)
+	items, err := a.adminSupplierDirectoryEntries(ctx, 0)
 	if err != nil {
 		return AdminSupplierDetail{}, err
 	}
@@ -365,11 +373,15 @@ func (a *ERPAuthenticator) AdminRegenerateSupplierCode(ctx context.Context, ref 
 
 	existingCodes := make(map[string]struct{}, len(items))
 	for _, candidate := range items {
-		candidateState := states[strings.TrimSpace(candidate.ID)]
+		candidateState := states[strings.TrimSpace(candidate.Ref)]
 		if candidateState.Removed {
 			continue
 		}
-		code, err := a.supplierAccessCode(candidate, candidateState)
+		code, err := a.supplierAccessCode(erpnext.Supplier{
+			ID:    candidate.Ref,
+			Name:  candidate.Name,
+			Phone: candidate.Phone,
+		}, candidateState)
 		if err != nil {
 			continue
 		}
@@ -461,13 +473,13 @@ func (a *ERPAuthenticator) AdminCreateCustomer(ctx context.Context, name, phone 
 }
 
 func (a *ERPAuthenticator) AdminCustomers(ctx context.Context, limit int) ([]CustomerDirectoryEntry, error) {
-	items, err := a.erp.SearchCustomers(ctx, a.baseURL, a.apiKey, a.apiSecret, "", limit)
+	items, err := a.adminCustomerDirectoryEntries(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]CustomerDirectoryEntry, 0, len(items))
 	for _, item := range items {
-		state, err := a.adminSupplierState(item.ID)
+		state, err := a.adminSupplierState(item.Ref)
 		if err != nil {
 			return nil, err
 		}
@@ -475,7 +487,7 @@ func (a *ERPAuthenticator) AdminCustomers(ctx context.Context, limit int) ([]Cus
 			continue
 		}
 		result = append(result, CustomerDirectoryEntry{
-			Ref:   item.ID,
+			Ref:   item.Ref,
 			Name:  item.Name,
 			Phone: item.Phone,
 		})
@@ -484,7 +496,7 @@ func (a *ERPAuthenticator) AdminCustomers(ctx context.Context, limit int) ([]Cus
 }
 
 func (a *ERPAuthenticator) AdminCustomerDetail(ctx context.Context, ref string) (AdminCustomerDetail, error) {
-	item, err := a.erp.GetCustomer(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(ref))
+	item, _, err := a.adminCustomerByRef(ctx, strings.TrimSpace(ref))
 	if err != nil {
 		return AdminCustomerDetail{}, err
 	}
@@ -512,7 +524,7 @@ func (a *ERPAuthenticator) AdminCustomerDetail(ctx context.Context, ref string) 
 }
 
 func (a *ERPAuthenticator) AdminUpdateCustomerPhone(ctx context.Context, ref, phone string) (AdminCustomerDetail, error) {
-	item, err := a.erp.GetCustomer(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(ref))
+	item, _, err := a.adminCustomerByRef(ctx, strings.TrimSpace(ref))
 	if err != nil {
 		return AdminCustomerDetail{}, err
 	}
@@ -537,7 +549,7 @@ func (a *ERPAuthenticator) AdminUpdateCustomerPhone(ctx context.Context, ref, ph
 }
 
 func (a *ERPAuthenticator) AdminRegenerateCustomerCode(ctx context.Context, ref string) (AdminCustomerDetail, error) {
-	item, err := a.erp.GetCustomer(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(ref))
+	item, _, err := a.adminCustomerByRef(ctx, strings.TrimSpace(ref))
 	if err != nil {
 		return AdminCustomerDetail{}, err
 	}
@@ -577,7 +589,7 @@ func (a *ERPAuthenticator) AdminRegenerateCustomerCode(ctx context.Context, ref 
 }
 
 func (a *ERPAuthenticator) AdminRemoveCustomer(ctx context.Context, ref string) error {
-	item, err := a.erp.GetCustomer(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(ref))
+	item, _, err := a.adminCustomerByRef(ctx, strings.TrimSpace(ref))
 	if err != nil {
 		return err
 	}
@@ -700,12 +712,15 @@ func (a *ERPAuthenticator) findSupplierForAdminIncludingRemoved(ctx context.Cont
 }
 
 func (a *ERPAuthenticator) findSupplierForAdminWithRemovedOption(ctx context.Context, ref string, includeRemoved bool) (erpnext.Supplier, AdminSupplierState, error) {
-	doc, err := a.erp.GetSupplier(ctx, a.baseURL, a.apiKey, a.apiSecret, strings.TrimSpace(ref))
+	entry, _, err := a.adminSupplierByRef(ctx, strings.TrimSpace(ref))
 	if err != nil {
 		return erpnext.Supplier{}, AdminSupplierState{}, err
 	}
-	if strings.TrimSpace(doc.ID) == "" {
-		return erpnext.Supplier{}, AdminSupplierState{}, ErrAdminSupplierNotFound
+	doc := erpnext.Supplier{
+		ID:      entry.ID,
+		Name:    entry.Name,
+		Phone:   entry.Phone,
+		Details: entry.Details,
 	}
 
 	state, err := a.adminSupplierState(doc.ID)
@@ -719,6 +734,45 @@ func (a *ERPAuthenticator) findSupplierForAdminWithRemovedOption(ctx context.Con
 }
 
 func (a *ERPAuthenticator) adminAssignedItems(ctx context.Context, supplierRef string, state AdminSupplierState, limit int) ([]SupplierItem, error) {
+	if reader, ok := a.reader.(interface {
+		SearchWerkaSupplierItemsPage(ctx context.Context, supplierRef, query string, limit, offset int) ([]SupplierItem, error)
+	}); ok {
+		const pageSize = 200
+		result := make([]SupplierItem, 0, pageSize)
+		for offset := 0; ; offset += pageSize {
+			pageLimit := pageSize
+			if limit > 0 {
+				remaining := limit - len(result)
+				if remaining <= 0 {
+					break
+				}
+				if remaining < pageLimit {
+					pageLimit = remaining
+				}
+			}
+			page, err := reader.SearchWerkaSupplierItemsPage(ctx, supplierRef, "", pageLimit, offset)
+			if err != nil {
+				break
+			}
+			result = append(result, page...)
+			if len(page) < pageLimit {
+				if limit > 0 && len(result) > limit {
+					result = result[:limit]
+				}
+				return result, nil
+			}
+			if limit > 0 && len(result) >= limit {
+				return result[:limit], nil
+			}
+		}
+		if len(result) > 0 {
+			if limit > 0 && len(result) > limit {
+				return result[:limit], nil
+			}
+			return result, nil
+		}
+	}
+
 	items, err := a.erp.ListAssignedSupplierItems(ctx, a.baseURL, a.apiKey, a.apiSecret, supplierRef, limit)
 	if err == nil {
 		return a.mapSupplierItems(ctx, items)
