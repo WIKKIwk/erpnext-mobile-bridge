@@ -25,12 +25,15 @@ import (
 )
 
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrInvalidRole        = errors.New("invalid role")
-	ErrInsufficientStock  = errors.New("insufficient stock")
-	ErrUnauthorized       = errors.New("unauthorized")
-	ErrInvalidInput       = errors.New("invalid input")
-	htmlTagPattern        = regexp.MustCompile(`<[^>]+>`)
+	ErrInvalidCredentials           = errors.New("invalid credentials")
+	ErrInvalidRole                  = errors.New("invalid role")
+	ErrInsufficientStock            = errors.New("insufficient stock")
+	ErrDuplicateCustomerIssueSource = errors.New("duplicate customer issue source")
+	ErrStockEntryNotFound           = errors.New("stock entry not found")
+	ErrDirectDBLookupUnavailable    = errors.New("direct db lookup unavailable")
+	ErrUnauthorized                 = errors.New("unauthorized")
+	ErrInvalidInput                 = errors.New("invalid input")
+	htmlTagPattern                  = regexp.MustCompile(`<[^>]+>`)
 )
 
 const (
@@ -49,6 +52,8 @@ const (
 	deliveryActorUnknown              = 0
 	deliveryActorWerka                = 1
 	customerQtyTolerance              = 0.0001
+	customerIssueSourceMarkerPrefix   = "accord_customer_issue_source:"
+	customerIssueDuplicateScanLimit   = 200
 )
 
 type ERPClient interface {
@@ -159,6 +164,28 @@ type ERPAuthenticator struct {
 
 func (a *ERPAuthenticator) SetDirectoryReader(reader DirectoryReader) {
 	a.reader = reader
+}
+
+func (a *ERPAuthenticator) StockEntryLookupByBarcode(ctx context.Context, barcode string, limit int) (StockEntryBarcodeLookup, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(barcode))
+	if normalized == "" {
+		return StockEntryBarcodeLookup{}, ErrInvalidInput
+	}
+	reader, ok := a.reader.(interface {
+		StockEntriesByBarcode(context.Context, string, int) ([]StockEntryBarcodeEntry, error)
+	})
+	if !ok {
+		return StockEntryBarcodeLookup{}, ErrDirectDBLookupUnavailable
+	}
+	entries, err := reader.StockEntriesByBarcode(ctx, normalized, limit)
+	if err != nil {
+		return StockEntryBarcodeLookup{}, err
+	}
+	return StockEntryBarcodeLookup{
+		Barcode: normalized,
+		Count:   len(entries),
+		Entries: entries,
+	}, nil
 }
 
 func (a *ERPAuthenticator) BaseURL() string {
@@ -1531,11 +1558,20 @@ func (a *ERPAuthenticator) WerkaCustomerItemOptionsPage(ctx context.Context, que
 }
 
 func (a *ERPAuthenticator) CreateWerkaCustomerIssue(ctx context.Context, principal Principal, customerRef, itemCode string, qty float64) (WerkaCustomerIssueRecord, error) {
+	return a.CreateWerkaCustomerIssueWithSource(ctx, principal, WerkaCustomerIssueCreateInput{
+		CustomerRef: customerRef,
+		ItemCode:    itemCode,
+		Qty:         qty,
+	})
+}
+
+func (a *ERPAuthenticator) CreateWerkaCustomerIssueWithSource(ctx context.Context, principal Principal, input WerkaCustomerIssueCreateInput) (WerkaCustomerIssueRecord, error) {
 	if principal.Role != RoleWerka {
 		return WerkaCustomerIssueRecord{}, ErrUnauthorized
 	}
-	customerRef = strings.TrimSpace(customerRef)
-	itemCode = strings.TrimSpace(itemCode)
+	customerRef := strings.TrimSpace(input.CustomerRef)
+	itemCode := strings.TrimSpace(input.ItemCode)
+	source := normalizeCustomerIssueSource(input.Source)
 	resolvedItems, err := a.erp.GetItemsByCodes(ctx, a.baseURL, a.apiKey, a.apiSecret, []string{itemCode})
 	if err != nil {
 		return WerkaCustomerIssueRecord{}, err
@@ -1552,13 +1588,21 @@ func (a *ERPAuthenticator) CreateWerkaCustomerIssue(ctx context.Context, princip
 	if err != nil {
 		return WerkaCustomerIssueRecord{}, err
 	}
+	duplicateSource, err := a.hasDuplicateCustomerIssueSource(ctx, customerRef, source)
+	if err != nil {
+		return WerkaCustomerIssueRecord{}, err
+	}
+	if duplicateSource {
+		return WerkaCustomerIssueRecord{}, ErrDuplicateCustomerIssueSource
+	}
 	result, err := a.erp.CreateDraftDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, erpnext.CreateDeliveryNoteInput{
 		Customer:  customerRef,
 		Company:   company,
 		Warehouse: warehouse,
 		ItemCode:  itemCode,
-		Qty:       qty,
+		Qty:       input.Qty,
 		UOM:       item.UOM,
+		Remarks:   customerIssueSourceMarker(source),
 	})
 	if err != nil {
 		return WerkaCustomerIssueRecord{}, err
@@ -1599,9 +1643,78 @@ func (a *ERPAuthenticator) CreateWerkaCustomerIssue(ctx context.Context, princip
 		ItemCode:     item.Code,
 		ItemName:     item.Name,
 		UOM:          item.UOM,
-		Qty:          qty,
+		Qty:          input.Qty,
 		CreatedLabel: currentTimestampLabel(),
 	}, nil
+}
+
+func normalizeCustomerIssueSource(source WerkaCustomerIssueSource) WerkaCustomerIssueSource {
+	var lineIndex *int
+	if source.LineIndex != nil && *source.LineIndex >= 0 {
+		value := *source.LineIndex
+		lineIndex = &value
+	}
+	return WerkaCustomerIssueSource{
+		Barcode:        strings.TrimSpace(source.Barcode),
+		StockEntryName: strings.TrimSpace(source.StockEntryName),
+		LineIndex:      lineIndex,
+	}
+}
+
+func customerIssueSourceMarker(source WerkaCustomerIssueSource) string {
+	source = normalizeCustomerIssueSource(source)
+	parts := make([]string, 0, 3)
+	if source.Barcode != "" {
+		parts = append(parts, "source_barcode="+source.Barcode)
+	}
+	if source.StockEntryName != "" {
+		parts = append(parts, "source_stock_entry="+source.StockEntryName)
+	}
+	if source.LineIndex != nil {
+		parts = append(parts, "source_line_index="+strconv.Itoa(*source.LineIndex))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return customerIssueSourceMarkerPrefix + strings.Join(parts, ";")
+}
+
+func (a *ERPAuthenticator) hasDuplicateCustomerIssueSource(ctx context.Context, customerRef string, source WerkaCustomerIssueSource) (bool, error) {
+	marker := customerIssueSourceMarker(source)
+	if marker == "" {
+		return false, nil
+	}
+	if reader, ok := a.reader.(interface {
+		CustomerIssueSourceExists(context.Context, string) (bool, error)
+	}); ok {
+		return reader.CustomerIssueSourceExists(ctx, marker)
+	}
+	notes, err := a.erp.ListCustomerDeliveryNotesPage(
+		ctx,
+		a.baseURL,
+		a.apiKey,
+		a.apiSecret,
+		strings.TrimSpace(customerRef),
+		customerIssueDuplicateScanLimit,
+		0,
+	)
+	if err != nil {
+		return false, err
+	}
+	for _, note := range notes {
+		remarks := note.Remarks
+		if strings.TrimSpace(remarks) == "" && strings.TrimSpace(note.Name) != "" {
+			full, err := a.erp.GetDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, note.Name)
+			if err != nil {
+				return false, err
+			}
+			remarks = full.Remarks
+		}
+		if strings.Contains(remarks, marker) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (a *ERPAuthenticator) WerkaSupplierItems(ctx context.Context, supplierRef, query string, limit int) ([]SupplierItem, error) {

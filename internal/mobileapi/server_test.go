@@ -1684,6 +1684,124 @@ func TestServerNotificationDetailAndCommentFlow(t *testing.T) {
 	}
 }
 
+func TestServerWerkaCustomerIssueCreateAcceptsSourceMetadata(t *testing.T) {
+	fakeERP := &fakeERPClient{
+		items: []erpnext.Item{
+			{Code: "ITEM-001", Name: "Item 001", UOM: "Kg"},
+		},
+	}
+	server := NewServer(NewERPAuthenticator(
+		fakeERP,
+		"http://localhost:8000",
+		"key",
+		"secret",
+		"Stores - CH",
+		"10",
+		"20",
+		"20WERKA0001",
+		"+998901111111",
+		"Werka",
+		nil,
+		nil,
+	))
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleWerka,
+		DisplayName: "Werka",
+		Ref:         "werka",
+	})
+	if err != nil {
+		t.Fatalf("failed to create werka session: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/mobile/werka/customer-issue/create",
+		bytes.NewReader([]byte(`{"customer_ref":"CUST-001","item_code":"ITEM-001","qty":2,"source_barcode":"30AD3353F0C879E4801AD4DF","source_stock_entry":"MAT-STE-2026-00572","source_line_index":1}`)),
+	)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected create status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	remarks := fakeERP.lastDeliveryNote.Remarks
+	for _, expected := range []string{
+		"accord_customer_issue_source:",
+		"source_barcode=30AD3353F0C879E4801AD4DF",
+		"source_stock_entry=MAT-STE-2026-00572",
+		"source_line_index=1",
+	} {
+		if !strings.Contains(remarks, expected) {
+			t.Fatalf("expected remarks to contain %q, got %q", expected, remarks)
+		}
+	}
+	if fakeERP.lastDeliveryNote.Customer != "CUST-001" || fakeERP.lastDeliveryNote.ItemCode != "ITEM-001" || fakeERP.lastDeliveryNote.Qty != 2 {
+		t.Fatalf("unexpected delivery note input: %+v", fakeERP.lastDeliveryNote)
+	}
+}
+
+func TestServerWerkaCustomerIssueCreateRejectsDuplicateSource(t *testing.T) {
+	fakeERP := &fakeERPClient{
+		items: []erpnext.Item{
+			{Code: "ITEM-001", Name: "Item 001", UOM: "Kg"},
+		},
+	}
+	server := NewServer(NewERPAuthenticator(
+		fakeERP,
+		"http://localhost:8000",
+		"key",
+		"secret",
+		"Stores - CH",
+		"10",
+		"20",
+		"20WERKA0001",
+		"+998901111111",
+		"Werka",
+		nil,
+		nil,
+	))
+	token, err := server.sessions.Create(Principal{
+		Role:        RoleWerka,
+		DisplayName: "Werka",
+		Ref:         "werka",
+	})
+	if err != nil {
+		t.Fatalf("failed to create werka session: %v", err)
+	}
+
+	body := []byte(`{"customer_ref":"CUST-001","item_code":"ITEM-001","qty":2,"source_barcode":"30AD3353F0C879E4801AD4DF","source_stock_entry":"MAT-STE-2026-00572","source_line_index":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/mobile/werka/customer-issue/create", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("unexpected first create status: %d body=%s", resp.Code, resp.Body.String())
+	}
+	noteCount := len(fakeERP.customerDeliveryNotes)
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/mobile/werka/customer-issue/create", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, req)
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("unexpected duplicate status: %d body=%s", resp.Code, resp.Body.String())
+	}
+	if len(fakeERP.customerDeliveryNotes) != noteCount {
+		t.Fatalf("duplicate request should not create another delivery note")
+	}
+	var payload map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode duplicate response: %v", err)
+	}
+	if payload["error_code"] != "duplicate_customer_issue_source" {
+		t.Fatalf("unexpected duplicate response: %+v", payload)
+	}
+}
+
 func TestServerWerkaCustomerIssueBatchCreate(t *testing.T) {
 	fakeERP := &fakeERPClient{
 		items: []erpnext.Item{

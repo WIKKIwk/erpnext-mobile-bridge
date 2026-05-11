@@ -1066,26 +1066,48 @@ func (s *Server) handleWerkaCustomerIssueCreate(w http.ResponseWriter, r *http.R
 		return
 	}
 	log.Printf(
-		"werka customer issue create requested by=%s customer=%s item=%s qty=%.4f",
+		"werka customer issue create requested by=%s customer=%s item=%s qty=%.4f source_stock_entry=%s source_line_index=%s source_barcode=%s",
 		strings.TrimSpace(principal.Ref),
 		strings.TrimSpace(req.CustomerRef),
 		strings.TrimSpace(req.ItemCode),
 		req.Qty,
+		strings.TrimSpace(req.SourceStockEntryName),
+		formatOptionalInt(req.SourceLineIndex),
+		strings.TrimSpace(req.SourceBarcode),
 	)
-	record, err := s.auth.CreateWerkaCustomerIssue(r.Context(), principal, req.CustomerRef, req.ItemCode, req.Qty)
+	record, err := s.auth.CreateWerkaCustomerIssueWithSource(r.Context(), principal, core.WerkaCustomerIssueCreateInput{
+		CustomerRef: req.CustomerRef,
+		ItemCode:    req.ItemCode,
+		Qty:         req.Qty,
+		Source: core.WerkaCustomerIssueSource{
+			Barcode:        req.SourceBarcode,
+			StockEntryName: req.SourceStockEntryName,
+			LineIndex:      req.SourceLineIndex,
+		},
+	})
 	if err != nil {
 		log.Printf(
-			"werka customer issue create failed by=%s customer=%s item=%s qty=%.4f err=%v",
+			"werka customer issue create failed by=%s customer=%s item=%s qty=%.4f source_stock_entry=%s source_line_index=%s source_barcode=%s err=%v",
 			strings.TrimSpace(principal.Ref),
 			strings.TrimSpace(req.CustomerRef),
 			strings.TrimSpace(req.ItemCode),
 			req.Qty,
+			strings.TrimSpace(req.SourceStockEntryName),
+			formatOptionalInt(req.SourceLineIndex),
+			strings.TrimSpace(req.SourceBarcode),
 			err,
 		)
 		if errors.Is(err, ErrInsufficientStock) {
 			writeJSON(w, http.StatusConflict, map[string]string{
 				"error":      "insufficient stock",
 				"error_code": "insufficient_stock",
+			})
+			return
+		}
+		if errors.Is(err, ErrDuplicateCustomerIssueSource) {
+			writeJSON(w, http.StatusConflict, map[string]string{
+				"error":      "duplicate customer issue source",
+				"error_code": "duplicate_customer_issue_source",
 			})
 			return
 		}
@@ -1104,6 +1126,13 @@ func (s *Server) handleWerkaCustomerIssueCreate(w http.ResponseWriter, r *http.R
 		log.Printf("push send failed for customer delivery note: %v", err)
 	}
 	writeJSON(w, http.StatusOK, record)
+}
+
+func formatOptionalInt(value *int) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.Itoa(*value)
 }
 
 func (s *Server) handleWerkaCustomerIssueBatchCreate(w http.ResponseWriter, r *http.Request) {

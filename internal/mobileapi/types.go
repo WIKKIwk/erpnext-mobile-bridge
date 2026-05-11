@@ -63,3 +63,4 @@ type AdminSupplierItemMutationRequest = core.AdminSupplierItemMutationRequest
 type AdminCreateItemRequest = core.AdminCreateItemRequest
 
 var ErrInsufficientStock = core.ErrInsufficientStock
+var ErrDuplicateCustomerIssueSource = core.ErrDuplicateCustomerIssueSource

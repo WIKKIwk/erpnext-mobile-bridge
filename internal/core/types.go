@@ -175,6 +175,34 @@ type WerkaArchiveResponse struct {
 	Items   []DispatchRecord    `json:"items"`
 }
 
+type StockEntryBarcodeEntry struct {
+	StockEntryName  string  `json:"stock_entry_name"`
+	StockEntryType  string  `json:"stock_entry_type"`
+	DocStatus       int     `json:"doc_status"`
+	Status          string  `json:"status"`
+	Company         string  `json:"company"`
+	PostingDate     string  `json:"posting_date"`
+	PostingTime     string  `json:"posting_time"`
+	Creation        string  `json:"creation"`
+	Modified        string  `json:"modified"`
+	Remarks         string  `json:"remarks"`
+	LineIndex       int     `json:"line_index"`
+	ItemCode        string  `json:"item_code"`
+	ItemName        string  `json:"item_name"`
+	Qty             float64 `json:"qty"`
+	UOM             string  `json:"uom"`
+	StockUOM        string  `json:"stock_uom"`
+	Barcode         string  `json:"barcode"`
+	SourceWarehouse string  `json:"source_warehouse"`
+	TargetWarehouse string  `json:"target_warehouse"`
+}
+
+type StockEntryBarcodeLookup struct {
+	Barcode string                   `json:"barcode"`
+	Count   int                      `json:"count"`
+	Entries []StockEntryBarcodeEntry `json:"entries"`
+}
+
 type CreateDispatchRequest struct {
 	ItemCode string  `json:"item_code"`
 	Qty      float64 `json:"qty"`
@@ -195,9 +223,25 @@ type WerkaUnannouncedCreateRequest struct {
 }
 
 type WerkaCustomerIssueCreateRequest struct {
-	CustomerRef string  `json:"customer_ref"`
-	ItemCode    string  `json:"item_code"`
-	Qty         float64 `json:"qty"`
+	CustomerRef          string  `json:"customer_ref"`
+	ItemCode             string  `json:"item_code"`
+	Qty                  float64 `json:"qty"`
+	SourceBarcode        string  `json:"source_barcode,omitempty"`
+	SourceStockEntryName string  `json:"source_stock_entry,omitempty"`
+	SourceLineIndex      *int    `json:"source_line_index,omitempty"`
+}
+
+type WerkaCustomerIssueSource struct {
+	Barcode        string
+	StockEntryName string
+	LineIndex      *int
+}
+
+type WerkaCustomerIssueCreateInput struct {
+	CustomerRef string
+	ItemCode    string
+	Qty         float64
+	Source      WerkaCustomerIssueSource
 }
 
 type WerkaCustomerIssueBatchCreateRequest struct {
