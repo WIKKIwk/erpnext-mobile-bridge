@@ -425,17 +425,18 @@ func (f *fakeERPClient) CreateAndSubmitDeliveryNote(_ context.Context, _, _, _ s
 	f.lastDeliveryNote = input
 	name := "MAT-DN-0001"
 	f.customerDeliveryNotes = append([]erpnext.DeliveryNoteDraft{{
-		Name:         name,
-		Customer:     input.Customer,
-		CustomerName: input.Customer,
-		ItemCode:     input.ItemCode,
-		ItemName:     input.ItemCode,
-		Qty:          input.Qty,
-		UOM:          input.UOM,
-		PostingDate:  "2026-03-14",
-		Status:       "Submitted",
-		DocStatus:    1,
-		Remarks:      input.Remarks,
+		Name:            name,
+		Customer:        input.Customer,
+		CustomerName:    input.Customer,
+		ItemCode:        input.ItemCode,
+		ItemName:        input.ItemCode,
+		Qty:             input.Qty,
+		UOM:             input.UOM,
+		PostingDate:     "2026-03-14",
+		Status:          "Submitted",
+		DocStatus:       1,
+		Remarks:         input.Remarks,
+		AccordSourceKey: input.SourceKey,
 	}}, f.customerDeliveryNotes...)
 	return erpnext.DeliveryNoteResult{Name: name}, nil
 }
@@ -444,17 +445,18 @@ func (f *fakeERPClient) CreateDraftDeliveryNote(_ context.Context, _, _, _ strin
 	f.lastDeliveryNote = input
 	name := "MAT-DN-0001"
 	f.customerDeliveryNotes = append([]erpnext.DeliveryNoteDraft{{
-		Name:         name,
-		Customer:     input.Customer,
-		CustomerName: input.Customer,
-		ItemCode:     input.ItemCode,
-		ItemName:     input.ItemCode,
-		Qty:          input.Qty,
-		UOM:          input.UOM,
-		PostingDate:  "2026-03-14",
-		Status:       "Draft",
-		DocStatus:    0,
-		Remarks:      input.Remarks,
+		Name:            name,
+		Customer:        input.Customer,
+		CustomerName:    input.Customer,
+		ItemCode:        input.ItemCode,
+		ItemName:        input.ItemCode,
+		Qty:             input.Qty,
+		UOM:             input.UOM,
+		PostingDate:     "2026-03-14",
+		Status:          "Draft",
+		DocStatus:       0,
+		Remarks:         input.Remarks,
+		AccordSourceKey: input.SourceKey,
 	}}, f.customerDeliveryNotes...)
 	return erpnext.DeliveryNoteResult{Name: name}, nil
 }
@@ -1726,15 +1728,15 @@ func TestServerWerkaCustomerIssueCreateAcceptsSourceMetadata(t *testing.T) {
 		t.Fatalf("unexpected create status: %d body=%s", resp.Code, resp.Body.String())
 	}
 
-	remarks := fakeERP.lastDeliveryNote.Remarks
+	sourceKey := fakeERP.lastDeliveryNote.SourceKey
 	for _, expected := range []string{
 		"accord_customer_issue_source:",
 		"source_barcode=30AD3353F0C879E4801AD4DF",
 		"source_stock_entry=MAT-STE-2026-00572",
 		"source_line_index=1",
 	} {
-		if !strings.Contains(remarks, expected) {
-			t.Fatalf("expected remarks to contain %q, got %q", expected, remarks)
+		if !strings.Contains(sourceKey, expected) {
+			t.Fatalf("expected source key to contain %q, got %q", expected, sourceKey)
 		}
 	}
 	if fakeERP.lastDeliveryNote.Customer != "CUST-001" || fakeERP.lastDeliveryNote.ItemCode != "ITEM-001" || fakeERP.lastDeliveryNote.Qty != 2 {

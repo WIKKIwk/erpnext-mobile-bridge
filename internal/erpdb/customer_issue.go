@@ -16,7 +16,7 @@ func (r *Reader) CustomerIssueSourceExists(ctx context.Context, marker string) (
 	err := r.db.QueryRowContext(ctx, `
 		SELECT name
 		FROM `+"`tabDelivery Note`"+`
-		WHERE LOCATE(?, COALESCE(remarks, '')) > 0
+		WHERE COALESCE(accord_source_key, '') = ?
 			AND COALESCE(docstatus, 0) < 2
 		LIMIT 1`,
 		marker,

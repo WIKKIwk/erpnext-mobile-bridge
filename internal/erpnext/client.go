@@ -105,6 +105,7 @@ type CreateDeliveryNoteInput struct {
 	Qty       float64
 	UOM       string
 	Remarks   string
+	SourceKey string
 }
 
 type DeliveryNoteResult struct {
@@ -138,6 +139,7 @@ type DeliveryNoteDraft struct {
 	AccordCustomerReason string
 	AccordDeliveryActor  string
 	AccordUIStatus       string
+	AccordSourceKey      string
 }
 
 type Client struct {

@@ -91,6 +91,9 @@ func (c *Client) CreateDraftDeliveryNote(ctx context.Context, baseURL, apiKey, a
 	if strings.TrimSpace(input.Remarks) != "" {
 		payload["remarks"] = strings.TrimSpace(input.Remarks)
 	}
+	if strings.TrimSpace(input.SourceKey) != "" {
+		payload["accord_source_key"] = strings.TrimSpace(input.SourceKey)
+	}
 
 	var createResp struct {
 		Data struct {
@@ -537,7 +540,7 @@ func (c *Client) ListCustomerDeliveryNotesPage(ctx context.Context, baseURL, api
 	params := url.Values{}
 	// Keep list queries on scalar fields only. Frappe get_list rejects
 	// rich/table fields such as remarks/items with HTTP 417.
-	params.Set("fields", `["name","customer","customer_name","posting_date","modified","status","docstatus","accord_flow_state","accord_customer_state","accord_delivery_actor"]`)
+	params.Set("fields", `["name","customer","customer_name","posting_date","modified","status","docstatus","accord_flow_state","accord_customer_state","accord_delivery_actor","accord_source_key"]`)
 	params.Set("filters", string(filtersJSON))
 	params.Set("limit_page_length", fmt.Sprintf("%d", limit))
 	if offset > 0 {
@@ -601,6 +604,7 @@ func mapDeliveryNoteDraft(doc map[string]interface{}) (DeliveryNoteDraft, error)
 		AccordCustomerReason: getStringValue(doc["accord_customer_reason"]),
 		AccordDeliveryActor:  getStringValue(doc["accord_delivery_actor"]),
 		AccordUIStatus:       getStringValue(doc["accord_ui_status"]),
+		AccordSourceKey:      getStringValue(doc["accord_source_key"]),
 	}
 	items, _ := doc["items"].([]interface{})
 	if len(items) == 0 {

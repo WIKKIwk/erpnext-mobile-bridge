@@ -1602,7 +1602,7 @@ func (a *ERPAuthenticator) CreateWerkaCustomerIssueWithSource(ctx context.Contex
 		ItemCode:  itemCode,
 		Qty:       input.Qty,
 		UOM:       item.UOM,
-		Remarks:   customerIssueSourceMarker(source),
+		SourceKey: customerIssueSourceMarker(source),
 	})
 	if err != nil {
 		return WerkaCustomerIssueRecord{}, err
@@ -1703,10 +1703,16 @@ func (a *ERPAuthenticator) hasDuplicateCustomerIssueSource(ctx context.Context, 
 	}
 	for _, note := range notes {
 		remarks := note.Remarks
+		if strings.TrimSpace(note.AccordSourceKey) == marker {
+			return true, nil
+		}
 		if strings.TrimSpace(remarks) == "" && strings.TrimSpace(note.Name) != "" {
 			full, err := a.erp.GetDeliveryNote(ctx, a.baseURL, a.apiKey, a.apiSecret, note.Name)
 			if err != nil {
 				return false, err
+			}
+			if strings.TrimSpace(full.AccordSourceKey) == marker {
+				return true, nil
 			}
 			remarks = full.Remarks
 		}
