@@ -1248,3 +1248,127 @@ Eslatma:
 Keyingi mantiqiy nishon:
 
 - Push subsystemni port qilish yoki navbatdagi notification/customer operational endpointni audit qilish.
+
+## 2026-01-16: Werka Domain Lock Checklist
+
+Foydalanuvchi qarori bo'yicha porting endi har safar turli domainlarga sakramaydi. Hozirgi fokus:
+
+- Avval `Werka` domain 100% yopiladi.
+- `Werka` tugamaguncha supplier/customer/admin domainlarga o'tilmaydi.
+- Faqat blocker dependency bo'lsa, u alohida "pending parity gap" sifatida belgilanadi.
+
+Go `Werka` route checklist:
+
+- `[x] /v1/mobile/werka/summary`
+- `[x] /v1/mobile/werka/home`
+- `[x] /v1/mobile/werka/customers`
+- `[x] /v1/mobile/werka/suppliers`
+- `[ ] /v1/mobile/werka/ai-search-suggestion`
+- `[x] /v1/mobile/werka/supplier-items`
+- `[x] /v1/mobile/werka/customer-items`
+- `[x] /v1/mobile/werka/customer-item-options`
+- `[x] /v1/mobile/werka/customer-issue/create`
+- `[x] /v1/mobile/werka/customer-issue/batch-create`
+- `[x] /v1/mobile/werka/unannounced/create`
+- `[x] /v1/mobile/werka/status-breakdown`
+- `[x] /v1/mobile/werka/status-details`
+- `[x] /v1/mobile/werka/pending`
+- `[x] /v1/mobile/werka/history`
+- `[x] /v1/mobile/werka/notifications`
+- `[x] /v1/mobile/werka/archive`
+- `[x] /v1/mobile/werka/archive/pdf`
+- `[x] /v1/mobile/werka/confirm`
+
+Hozir Werka route coverage:
+
+- `18/19`
+- Qolgan yagona Werka endpoint:
+  `/v1/mobile/werka/ai-search-suggestion`
+
+## 2026-01-16: Werka Confirm Rust Port
+
+Portlangan endpoint:
+
+- `POST /v1/mobile/werka/confirm`
+
+Go audit qilingan joylar:
+
+- `internal/mobileapi/server.go`
+  `handleWerkaConfirm`
+- `internal/core/types.go`
+  `ConfirmReceiptRequest`
+- `internal/core/service.go`
+  `ConfirmReceipt`
+  `dispatchStatusFromQuantities`
+- `internal/erpnext/purchase_receipt.go`
+  `ConfirmAndSubmitPurchaseReceipt`
+  `buildAccordDecisionNote`
+  `upsertAccordDecisionInRemarks`
+  `ExtractAccordDecisionNote`
+  `findAlternateWarehouse`
+
+Muhim Go behavior:
+
+- Method faqat `POST`; boshqa method `405 {"error":"method not allowed"}`.
+- Auth required.
+- Role faqat Werka; boshqa role `403 {"error":"forbidden"}`.
+- Invalid JSON:
+  `400 {"error":"invalid json"}`.
+- Missing JSON fieldlar Go decoder kabi zero/default bo'ladi.
+- Confirm/submit xatosi:
+  `500 {"error":"receipt confirm failed"}`.
+- Response `DispatchRecord`.
+- Status sent/accepted qty bo'yicha:
+  `accepted`, `partial`, `rejected`.
+- Partial/return bo'lsa `Accord Qabul`, `Accord Qaytarildi`, optional `Accord Sabab`, optional `Accord Izoh` decision note yaratiladi.
+- Decision note `remarks` ichiga upsert qilinadi va eski decision/supplier ack line'lari olib tashlanadi.
+- Decision note comment sifatida best-effort yoziladi.
+- Submit xato bersa Go kabi original Purchase Receipt doc rollback qilinadi.
+- Full return holatida Go kabi submit qilinmaydi, faqat remarks/comment yoziladi va response qaytadi.
+
+Rust'da qo'shilgan qismlar:
+
+- HTTP route:
+  `/v1/mobile/werka/confirm`
+- Handler:
+  `src/http/handlers/werka/confirm.rs`
+- Request model:
+  `ConfirmReceiptRequest`
+- Core flow:
+  `src/core/werka/confirm.rs`
+- Port:
+  `WerkaConfirmWriter`
+- ERPNext adapter:
+  `src/erpnext/purchase_receipt/response.rs`
+- Decision helper submodule:
+  `src/erpnext/purchase_receipt/response/decision.rs`
+- Route tests:
+  `src/http/werka_confirm_route_tests.rs`
+
+Tartib / file hygiene:
+
+- Confirm core logic alohida `core/werka/confirm.rs` ichida.
+- HTTP handler alohida `http/handlers/werka/confirm.rs` ichida.
+- Purchase Receipt decision-note helperlari `response/decision.rs`ga ajratildi.
+- Rust source/test fayllar tekshirildi: eng katta fayl `459` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test`:
+  `179 passed`, `0 failed`.
+- `git diff --check` o'tdi.
+- Yangi route testlar:
+  non-POST
+  non-Werka forbidden
+  invalid JSON
+  provider yo'qligi
+  success response va decision field forwarding
+- Yangi ERPNext helper testlar:
+  decision note Go format
+  old decision/supplier ack line'larini upsertda olib tashlash
+
+Eslatma:
+
+- Go handler confirmdan keyin supplier push yuboradi. Rust push subsystem hali port qilinmagani uchun bu hook pending parity gap.
+- Keyingi Werka nishon:
+  `/v1/mobile/werka/ai-search-suggestion`.
