@@ -1284,6 +1284,111 @@ Hozir Werka route coverage:
 - `19/19`
 - Werka mobile API route'lari Rustda yopildi.
 
+## 2026-01-26: Supplier Domain Lock Checklist
+
+Fokus endi `Supplier` domain. Qoida:
+
+- Supplier domain 100% bo'lmaguncha boshqa domainlarga sakralmaydi.
+- Har safar bitta kichik endpoint/slice olinadi.
+- Go xatti-harakati 1:1 saqlanadi, lekin Go'dagi katta fayl tartibsizligi Rustda takrorlanmaydi.
+- Direct DB read va ERPNext fallback alohida portlar orqali ulanadi.
+
+Go `Supplier` route checklist:
+
+- `[x] /v1/mobile/supplier/unannounced/respond`
+- `[x] /v1/mobile/supplier/summary`
+- `[ ] /v1/mobile/supplier/status-breakdown`
+- `[ ] /v1/mobile/supplier/status-details`
+- `[ ] /v1/mobile/supplier/history`
+- `[ ] /v1/mobile/supplier/items`
+- `[ ] /v1/mobile/supplier/dispatch`
+
+Hozir Supplier route coverage:
+
+- `2/7`
+- Keyingi tavsiya qilingan slice:
+  `/v1/mobile/supplier/history`
+  chunki `summary` bilan bir xil purchase receipt source va auth contractdan foydalanadi.
+
+## 2026-01-26: Supplier Summary Rust Port
+
+Portlangan endpoint:
+
+- `GET/POST /v1/mobile/supplier/summary`
+
+Go source audit:
+
+- Handler:
+  `internal/mobileapi/server.go`
+  `handleSupplierSummary`
+- Core:
+  `internal/core/service.go`
+  `SupplierSummary`
+  `collectSupplierPurchaseReceipts`
+- Direct DB:
+  `internal/erpdb/reader.go`
+  `SupplierSummary`
+
+Go contract:
+
+- Auth required.
+- Role faqat Supplier; boshqa role:
+  `403 {"error":"forbidden"}`.
+- Go handler method check qilmaydi; Rust route ham `any` qilib qo'yildi va `POST` regressiya test bilan yopildi.
+- Provider xatosi yoki provider yo'q bo'lsa:
+  `500 {"error":"supplier summary failed"}`.
+- Response JSON:
+  `pending_count`
+  `submitted_count`
+  `returned_count`
+- Direct DB yo'li `tabPurchase Receipt` ichida:
+  `supplier_delivery_note LIKE 'TG:%'`
+  `supplier = principal.Ref`
+- ERPNext fallback Go kabi page bilan o'qiydi:
+  `ListSupplierPurchaseReceiptsPage`
+  page size `200`
+  duplicate `name` skip
+
+Rust'da qo'shilgan qismlar:
+
+- Model:
+  `SupplierHomeSummary`
+- Ports:
+  `SupplierReadLookup`
+  `SupplierPurchaseReceiptLookup`
+- Core service:
+  `src/core/werka/supplier_read.rs`
+- Direct DB adapter:
+  `src/erpdb/supplier_summary.rs`
+- ERPNext adapter:
+  `SupplierPurchaseReceiptLookup for ErpnextClient`
+- HTTP handler:
+  `src/http/handlers/supplier/read.rs`
+- Supplier shared auth helper:
+  `src/http/handlers/supplier/authz.rs`
+- Route tests:
+  `src/http/supplier_read_route_tests.rs`
+
+Tartib / file hygiene:
+
+- Supplier HTTP auth `authz.rs`ga ajratildi; `unannounced.rs` ichidagi duplicate auth helperlar olib tashlandi.
+- Direct DB supplier summary `reader.rs`ga qo'shilmadi, alohida modulga ajratildi.
+- Core summary collection/count logic alohida `supplier_read.rs`da.
+- Rust source/test fayllar tekshirildi: eng katta fayl `461` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test`:
+  `194 passed`, `0 failed`.
+- `cargo fmt --check` o'tdi.
+- `git diff --check` o'tdi.
+
+Natija:
+
+- Supplier domain route coverage:
+  `2/7`.
+- Supplier `summary` endpointi direct DB va ERPNext fallback yo'llari bilan port qilindi.
+
 ## 2026-01-16: Werka Confirm Rust Port
 
 Portlangan endpoint:
