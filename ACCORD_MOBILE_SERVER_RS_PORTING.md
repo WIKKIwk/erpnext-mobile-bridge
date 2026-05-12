@@ -1301,14 +1301,118 @@ Go `Supplier` route checklist:
 - `[x] /v1/mobile/supplier/status-breakdown`
 - `[x] /v1/mobile/supplier/status-details`
 - `[x] /v1/mobile/supplier/items`
-- `[ ] /v1/mobile/supplier/dispatch`
+- `[x] /v1/mobile/supplier/dispatch`
 
 Hozir Supplier route coverage:
 
-- `6/7`
-- Keyingi tavsiya qilingan slice:
+- `7/7`
+- Supplier mobile API route'lari Rustda yopildi.
+- Keyingi tavsiya:
+  Supplier route smoke/review, push hook parity audit, keyin navbatdagi domain tanlash.
+
+## 2026-01-26: Supplier Dispatch Rust Port
+
+Portlangan endpoint:
+
+- `POST /v1/mobile/supplier/dispatch`
+
+Go source audit:
+
+- Handler:
+  `internal/mobileapi/server.go`
+  `handleCreateDispatch`
+- Request model:
+  `internal/core/types.go`
+  `CreateDispatchRequest`
+- Core:
+  `internal/core/service.go`
+  `CreateDispatch`
+- Supplier validation:
+  `internal/core/admin_suppliers.go`
+  `validateSupplierItemAllowed`
+  `adminAssignedItems`
+- ERPNext adapter:
+  `internal/erpnext/purchase_receipt.go`
+  `CreateDraftPurchaseReceipt`
+
+Go contract:
+
+- Method faqat `POST`; boshqa method:
+  `405 {"error":"method not allowed"}`.
+- Auth required.
+- Role faqat Supplier; boshqa role:
+  `403 {"error":"forbidden"}`.
+- Invalid JSON:
+  `400 {"error":"invalid json"}`.
+- Missing JSON fieldlar Go decoder kabi zero/default bo'ladi; keyingi validation/create bosqichida xato bo'lsa:
+  `500 {"error":"dispatch create failed"}`.
+- Request:
+  `item_code`
+  `qty`
+- Supplier item validation Go'dagi `validateSupplierItemAllowed` contractiga mos:
+  supplier admin state o'qiladi
+  removed/blocked supplier dispatch qila olmaydi
+  assigned itemlar direct DB readerdan page qilib o'qiladi
+  ERPNext `Item Supplier` fallback ishlaydi
+  permission fallback `AssignedItemCodes` orqali ishlaydi
+  item code case-insensitive compare qilinadi
+- Warehouse Go kabi default warehouse bo'lsa shu, bo'lmasa ERPNext Warehouse listdan birinchi name.
+- Purchase Receipt draft Go adapteriga mos input bilan yaratiladi:
+  supplier ref
+  supplier phone
+  trim qilingan item code
+  qty
+  warehouse
+- Success response Go'dagi `CreateDispatch` record shape:
+  `id`
+  `supplier_name`
+  `item_code`
+  `item_name`
+  `uom`
+  `sent_qty`
+  `accepted_qty: 0`
+  `status: pending`
+  `created_label` current UTC RFC3339.
+
+Rust'da qo'shilgan qismlar:
+
+- Request model:
+  `CreateDispatchRequest`
+- Service:
+  `src/core/werka/supplier_dispatch.rs`
+  `create_supplier_dispatch`
+- HTTP handler:
+  `src/http/handlers/supplier/dispatch.rs`
+- Route:
   `/v1/mobile/supplier/dispatch`
-  chunki supplier items endi yopildi va dispatch shu item contractga tayanadi.
+- Route tests:
+  `src/http/supplier_dispatch_route_tests.rs`
+
+Tartib / file hygiene:
+
+- Dispatch core logic alohida `supplier_dispatch.rs` faylida.
+- Dispatch HTTP handler alohida `dispatch.rs` faylida.
+- Mavjud ERPNext Purchase Receipt draft porti qayta ishlatildi; duplicate ERP client yozilmadi.
+- Rust source/test fayllar tekshirildi: eng katta fayl `480` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test supplier_dispatch`:
+  `5 passed`, `0 failed`.
+- Rust `cargo test`:
+  `217 passed`, `0 failed`.
+- `cargo fmt --check` o'tdi.
+- `git diff --check` o'tdi.
+
+Eslatma:
+
+- Go handler dispatch successdan keyin Werka uchun best-effort push yuboradi. Rust push subsystem hali umumiy port qilinmagani uchun route response parity yopildi, push hook esa global push port/audit ichida ulanadi.
+
+Natija:
+
+- Supplier domain route coverage:
+  `7/7`.
+- Supplier mobile API endpointlari Rustda route/response contract bo'yicha yopildi.
 
 ## 2026-01-26: Supplier Items Rust Port
 
