@@ -260,6 +260,13 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Go handler method check qilmagani uchun Rust route ham `any` qilib qo'yildi; `POST /v1/mobile/werka/home` ham Go kabi ishlashi regressiya test bilan yopildi.
 - Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/home` ikkalasi ham Werka token bilan `summary/pending_items` response qaytargani tasdiqlandi.
 - Testlar 36 taga yetdi.
+- `/v1/mobile/werka/summary` endpoint Rust'da qo'shildi.
+- Summary direct DB provider Go'dagi status-only querylarga mos alohida yozildi.
+- Purchase Receipt status row va Delivery Note status row mapping test bilan yopildi.
+- Summary endpoint authsiz `401`, provider yo'q bo'lsa `500 {"error":"werka summary failed"}`, success response esa `pending_count/confirmed_count/returned_count` bo'lishi test qilindi.
+- Go handler method check qilmagani uchun summary route ham `any` qilindi; `POST /v1/mobile/werka/summary` regressiya test bilan yopildi.
+- Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/summary` ikkalasi ham Werka token bilan summary response qaytargani tasdiqlandi.
+- Testlar 44 taga yetdi.
 
 ## Progress Checklist
 
