@@ -229,6 +229,10 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - ERPNext `GetCustomer` refresh adapteri customer phone fieldini o'qiydi.
 - Real ERPNext smoke testda supplier/customer login response profile refresh bilan `200` qaytgani tasdiqlandi va cleanup qilindi.
 - Testlar 18 taga yetdi.
+- Supplier avatar proxy login va `/v1/mobile/me` response'lariga qo'shildi.
+- Supplier avatar proxy token URL encoding bilan test qilindi.
+- Customer avatar URL proxy qilinmasligi test bilan yopildi.
+- Testlar 20 taga yetdi.
 
 ## Progress Checklist
 
@@ -552,6 +556,7 @@ Portlangan:
 - Customer custom code state check.
 - Login/me profile refresh.
 - Supplier/customer ERPNext profile lookup.
+- Supplier avatar proxy response rewrite.
 - Phone normalization.
 - Role prefix inference.
 - Login response skeleton.
@@ -562,7 +567,7 @@ Portlangan:
 
 Hali portlanmagan:
 
-- Supplier avatar proxy.
+- Supplier avatar view/download endpoint.
 - Werka login response ichidagi `werka_home` preload.
 
 ## Keyingi Qadam
