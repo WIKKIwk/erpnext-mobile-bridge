@@ -787,3 +787,66 @@ Keyingi mantiqiy nishon:
 
 - `handleWerkaCustomerIssueBatchCreate`
   yoki push subsystem/notification write contractini audit qilish.
+
+## 2026-01-16: Werka Customer Issue Batch Create Rust Port
+
+Portlangan endpoint:
+
+- `POST /v1/mobile/werka/customer-issue/batch-create`
+
+Go audit qilingan joylar:
+
+- `internal/mobileapi/server.go`
+  `handleWerkaCustomerIssueBatchCreate`
+- `internal/core/types.go`
+  `WerkaCustomerIssueBatchCreateRequest`
+  `WerkaCustomerIssueBatchLineResult`
+  `WerkaCustomerIssueBatchResult`
+
+Muhim Go behavior:
+
+- Method faqat `POST`; boshqa method `405 {"error":"method not allowed"}`.
+- Werka auth required.
+- Invalid JSON `400 {"error":"invalid json"}`.
+- `lines` bo'sh bo'lsa `400 {"error":"lines are required"}`.
+- Handler umumiy response'ni `200` qaytaradi, line xatolari `failed` ichida beriladi.
+- Go batch line uchun `CreateWerkaCustomerIssue` chaqiradi, `CreateWerkaCustomerIssueWithSource` emas. Shuning uchun request line ichida source metadata bo'lsa ham batch flow source marker/duplicate source check ishlatmaydi.
+- `ErrInsufficientStock` line failure sifatida:
+  `{"error":"insufficient stock","error_code":"insufficient_stock"}`.
+- Boshqa line error:
+  `{"error":"werka customer issue create failed"}`.
+- Success line `created` ichida `line_index` va `record` bilan qaytadi.
+- `client_batch_id` trim qilinadi.
+- Go ichida 4 tagacha worker ishlatiladi. Rust port hozir deterministic sequential bajaradi, lekin response contract va line order Go result slice tartibiga mos.
+
+Rust'da qo'shilgan qismlar:
+
+- Models:
+  `WerkaCustomerIssueBatchCreateRequest`
+  `WerkaCustomerIssueBatchLineResult`
+  `WerkaCustomerIssueBatchResult`
+- Core service:
+  `WerkaService::create_customer_issue_batch`
+- HTTP handler:
+  `customer_issue_batch_create`
+- Route:
+  `/v1/mobile/werka/customer-issue/batch-create`
+
+Test holati:
+
+- Rust `cargo test`:
+  `142 passed`, `0 failed`.
+- Yangi batch route testlar:
+  empty lines
+  non-POST
+  invalid JSON
+  created line response
+  partial insufficient stock failure
+
+Eslatma:
+
+- Go handler har created line uchun best-effort push yuboradi. Rust push subsystem hali port qilinmagani uchun bu hook hali yo'q. Push port qilinganda single create va batch create ikkalasiga ham response'ni yiqitmaydigan best-effort push ulanishi kerak.
+
+Keyingi mantiqiy nishon:
+
+- Push subsystem/notification write contractini audit qilish yoki navbatdagi Werka write endpointga o'tish.
