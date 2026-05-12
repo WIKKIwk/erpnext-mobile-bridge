@@ -239,6 +239,13 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Authsiz avatar view `401` qaytarishi test qilindi.
 - ERPNext file download adapteri profile lookup orqali ulandi.
 - Testlar 23 taga yetdi.
+- Werka login `werka_home` preload uchun Rust typed model qo'shildi.
+- Go'dagi `WerkaHomeSummary`, `WerkaHomeData` va `DispatchRecord` JSON field shakllari Rust modeliga ko'chirildi.
+- Login response ichida `role=werka` bo'lsa `WerkaService.home(20)` preload qilinadigan bo'ldi.
+- Go'dagi kabi Werka home preload xato yoki data yo'q bo'lsa login muvaffaqiyatli davom etadi va `werka_home` response'dan omit qilinadi.
+- `werka_home` bor/yo'qligi JSON serialization regressiya testlari bilan yopildi.
+- WerkaHome data source uchun port/interface ajratildi, lekin direct DB/ERP runtime provider hali keyingi scope sifatida qolmoqda.
+- Testlar 27 taga yetdi.
 
 ## Progress Checklist
 
