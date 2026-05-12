@@ -212,6 +212,11 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Supplier login `SearchSuppliers(phone, 50)` va fallback `SearchSuppliers("", 500)` tartibida yozildi.
 - Supplier `blocked/removed/custom_code` state qoidalari test bilan yopildi.
 - Testlar 11 taga yetdi.
+- ERPNext supplier search runtime adapter qo'shildi.
+- Go formatidagi `mobile_admin_suppliers.json` o'qiydigan admin state store qo'shildi.
+- `ERP_URL`, `ERP_API_KEY`, `ERP_API_SECRET`, `ERP_TIMEOUT_SECONDS` config'lari Rust runtime'ga qo'shildi.
+- ERP config to'liq bo'lsa supplier login runtime wiring auth service'ga ulanadigan qilindi.
+- Testlar 13 taga yetdi.
 
 ## Progress Checklist
 
@@ -528,6 +533,8 @@ Portlangan:
 - Supplier login service logic.
 - Supplier deterministic access code.
 - Supplier lookup/admin state port interface'lari.
+- Supplier login runtime ERPNext adapter wiring.
+- Supplier admin state JSON store.
 - Phone normalization.
 - Role prefix inference.
 - Login response skeleton.
@@ -538,7 +545,7 @@ Portlangan:
 
 Hali portlanmagan:
 
-- Supplier login runtime ERPNext adapter wiring.
+- Supplier login real ERPNext smoke test.
 - Customer login ERPNext search + custom code state.
 - Login ichidagi `Profile` refresh.
 - Supplier avatar proxy.
