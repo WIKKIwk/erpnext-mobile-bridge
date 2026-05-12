@@ -277,6 +277,13 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Router fayli 500 qator chegarasiga yetgani uchun router testlari `src/http/router_tests.rs`ga ajratildi.
 - Production `src/http/router.rs` 33 qatorga tushirildi, behavior o'zgarmadi.
 - Refactordan keyin `cargo test` 52 ta test bilan yana pass bo'ldi.
+- `/v1/mobile/werka/history` endpoint Rust'da qo'shildi.
+- History direct DB provider Go'dagi 120 recent limit, Telegram Purchase Receipt, supplier ack comment va customer delivery result eventlarini birlashtirish qoidalariga mos yozildi.
+- Supplier ack event va customer delivery result event mapping test bilan yopildi.
+- History endpoint authsiz `401`, provider yo'q bo'lsa `500 {"error":"history fetch failed"}`, success response array bo'lishi test qilindi.
+- Go handler method check qilmagani uchun history route ham `any` qilindi; `POST /v1/mobile/werka/history` regressiya test bilan yopildi.
+- Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/history` ikkalasi ham Werka token bilan array response qaytargani tasdiqlandi.
+- Testlar 60 taga yetdi.
 
 ## Progress Checklist
 
