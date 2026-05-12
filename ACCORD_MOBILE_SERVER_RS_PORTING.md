@@ -291,6 +291,13 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Go handler method check qilmagani uchun status-breakdown route ham `any` qilindi; `POST /v1/mobile/werka/status-breakdown` regressiya test bilan yopildi.
 - Real ERPNext smoke testda `pending/confirmed/returned` kindlari uchun `GET` va `POST` array response qaytargani tasdiqlandi.
 - Testlar 68 taga yetdi.
+- `/v1/mobile/werka/status-details` endpoint Rust'da qo'shildi.
+- `kind` va `supplier_ref` query paramlari Go'dagi kabi trim qilinadi; `supplier_ref` bo'sh bo'lsa barcha supplier/customer ref recordlari ko'riladi.
+- Status details direct DB provider Go'dagi Purchase Receipt va Delivery Note record filter qoidalariga mos alohida builder modulda yozildi.
+- Supplier ref filter case-insensitive ishlashi, `pending/confirmed/returned` kind mappingi va `created_label` bo'yicha newest-first sort tartibi test bilan yopildi.
+- Go handler method check qilmagani uchun status-details route ham `any` qilindi; `POST /v1/mobile/werka/status-details` regressiya test bilan yopildi.
+- Real ERPNext smoke testda `pending/confirmed/returned` kindlari uchun `GET /v1/mobile/werka/status-details` array response qaytargani tasdiqlandi.
+- Testlar 77 taga yetdi.
 
 ## Progress Checklist
 
