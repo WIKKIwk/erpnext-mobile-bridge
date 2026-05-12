@@ -223,6 +223,12 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - ERPNext customer search runtime adapter qo'shildi.
 - Real ERPNext smoke testda vaqtinchalik customer va temp admin state bilan Rust customer login `200/customer/token` bilan tasdiqlandi va cleanup qilindi.
 - Testlar 16 taga yetdi.
+- Profile refresh service qo'shildi.
+- Login va `/v1/mobile/me` ichida profile refresh ulanib, refresh muvaffaqiyatli bo'lsa session update qilinadigan bo'ldi.
+- ERPNext `GetSupplier` refresh adapteri supplier phone va image fieldlarini o'qiydi.
+- ERPNext `GetCustomer` refresh adapteri customer phone fieldini o'qiydi.
+- Real ERPNext smoke testda supplier/customer login response profile refresh bilan `200` qaytgani tasdiqlandi va cleanup qilindi.
+- Testlar 18 taga yetdi.
 
 ## Progress Checklist
 
@@ -544,6 +550,8 @@ Portlangan:
 - Customer login service logic.
 - Customer login runtime ERPNext adapter wiring.
 - Customer custom code state check.
+- Login/me profile refresh.
+- Supplier/customer ERPNext profile lookup.
 - Phone normalization.
 - Role prefix inference.
 - Login response skeleton.
@@ -554,7 +562,6 @@ Portlangan:
 
 Hali portlanmagan:
 
-- Login ichidagi `Profile` refresh.
 - Supplier avatar proxy.
 - Werka login response ichidagi `werka_home` preload.
 
