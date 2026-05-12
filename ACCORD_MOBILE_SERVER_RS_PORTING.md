@@ -303,6 +303,16 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - `GET` va `POST /v1/mobile/werka/notifications` history payload qaytarishi regressiya test bilan yopildi.
 - Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/notifications` ikkalasi ham array response qaytargani tasdiqlandi.
 - Testlar 79 taga yetdi.
+- `/v1/mobile/werka/archive` endpoint Rust'da qo'shildi.
+- Archive model JSON shakli Go'dagi `kind/period/from/to/summary/items`, `record_count` va `totals_by_uom` contractiga mos yozildi.
+- `kind` normalize qoidasi: `received/returned` saqlanadi, boshqa qiymatlar `sent`; `period` normalize qoidasi: `daily/monthly/custom` saqlanadi, boshqa qiymatlar `yearly`.
+- Archive direct DB provider Go'dagi conditional query tartibiga mos yozildi: `sent` faqat Delivery Note, `received` faqat Purchase Receipt, `returned` ikkalasini o'qiydi.
+- Date filter qoidalari Go bilan mos: Purchase Receipt `posting_date` inclusive, Delivery Note `modified >= from 00:00:00` va `< to+1 day 00:00:00`.
+- Archive summary uchun UOM bo'yicha total, empty UOM fallback `Nos`, received/returned/sent metric qty qoidalari test bilan yopildi.
+- Invalid archive date Go'dagi kabi `500 {"error":"werka archive failed"}` qaytarishi regressiya test bilan yopildi.
+- Archive route ham Go handler kabi `any` qilindi; `POST /v1/mobile/werka/archive` regressiya test bilan yopildi.
+- Real ERPNext smoke testda `sent/received/returned` kindlari va `POST` archive array/summary response qaytargani tasdiqlandi.
+- Testlar 90 taga yetdi.
 
 ## Progress Checklist
 
