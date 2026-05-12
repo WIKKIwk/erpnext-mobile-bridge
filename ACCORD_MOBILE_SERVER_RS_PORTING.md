@@ -1249,7 +1249,7 @@ Keyingi mantiqiy nishon:
 
 - Push subsystemni port qilish yoki navbatdagi notification/customer operational endpointni audit qilish.
 
-## 2026-01-16: Werka Domain Lock Checklist
+## 2026-01-26: Werka Domain Lock Checklist
 
 Foydalanuvchi qarori bo'yicha porting endi har safar turli domainlarga sakramaydi. Hozirgi fokus:
 
@@ -1263,7 +1263,7 @@ Go `Werka` route checklist:
 - `[x] /v1/mobile/werka/home`
 - `[x] /v1/mobile/werka/customers`
 - `[x] /v1/mobile/werka/suppliers`
-- `[ ] /v1/mobile/werka/ai-search-suggestion`
+- `[x] /v1/mobile/werka/ai-search-suggestion`
 - `[x] /v1/mobile/werka/supplier-items`
 - `[x] /v1/mobile/werka/customer-items`
 - `[x] /v1/mobile/werka/customer-item-options`
@@ -1281,9 +1281,8 @@ Go `Werka` route checklist:
 
 Hozir Werka route coverage:
 
-- `18/19`
-- Qolgan yagona Werka endpoint:
-  `/v1/mobile/werka/ai-search-suggestion`
+- `19/19`
+- Werka mobile API route'lari Rustda yopildi.
 
 ## 2026-01-16: Werka Confirm Rust Port
 
@@ -1372,3 +1371,111 @@ Eslatma:
 - Go handler confirmdan keyin supplier push yuboradi. Rust push subsystem hali port qilinmagani uchun bu hook pending parity gap.
 - Keyingi Werka nishon:
   `/v1/mobile/werka/ai-search-suggestion`.
+
+## 2026-01-26: Werka AI Search Suggestion Rust Port
+
+Portlangan endpoint:
+
+- `POST /v1/mobile/werka/ai-search-suggestion`
+
+Go audit qilingan joylar:
+
+- `internal/mobileapi/werka_ai_search.go`
+  `handleWerkaAISearchSuggestion`
+  `werkaAISearchService`
+  `inferSuggestion`
+  `decodeWerkaAISearchPayload`
+  `sanitizeSearchQuery`
+  `normalizeServerFriendlyQuery`
+  `rankQueries`
+  `detectImageMIMEType`
+- `internal/mobileapi/werka_ai_search_test.go`
+- `cmd/core/main.go`
+  `SetWerkaAISearchConfig`
+- `README.md`
+  `GEMINI_API_KEY`
+  `GEMINI_VISION_MODEL`
+
+Muhim Go behavior:
+
+- Method faqat `POST`; boshqa method:
+  `405 {"error":"method not allowed","code":"method_not_allowed"}`.
+- Auth required.
+- Role faqat Werka; boshqa role:
+  `403 {"error":"forbidden"}`.
+- AI config yo'q bo'lsa upload parse qilmasdan oldin:
+  `503 {"error":"werka ai search is not configured","code":"not_configured"}`.
+- Upload multipart `image` field orqali keladi.
+- Upload limit:
+  `8 MiB`.
+- Multipart parse xatosi:
+  `400 {"error":"invalid image upload","code":"invalid_image"}`.
+- `image` field yo'q yoki bo'sh bo'lsa:
+  `400 {"error":"image is required","code":"invalid_image"}`.
+- Gemini request:
+  `generateContent`
+  `temperature: 0`
+  `responseMimeType: application/json`
+  inline base64 image
+- Default model:
+  `gemini-flash-lite-latest`.
+- No result bo'lsa Go kabi `200` va empty suggestion shape.
+- Upstream xatolar:
+  `502` va `code: upstream_failed`.
+- Query normalization:
+  Nivea, Musaffo, Hot Lunch/Xot Lanch, Simba Chips, Mini Rulet kabi Go special-case'lari port qilindi.
+
+Rust'da qo'shilgan qismlar:
+
+- AI adapter:
+  `src/ai/werka_search.rs`
+- Core service:
+  `src/core/werka/ai_search.rs`
+- Models:
+  `WerkaAiSearchSuggestion`
+- Ports:
+  `WerkaAiSearch`
+  `WerkaAiSearchImage`
+  `WerkaAiSearchError`
+- HTTP handler:
+  `src/http/handlers/werka/ai_search.rs`
+- Route tests:
+  `src/http/werka_ai_search_route_tests.rs`
+- Runtime wiring:
+  `GEMINI_API_KEY`
+  `GEMINI_VISION_MODEL`
+
+Tartib / file hygiene:
+
+- AI Gemini client `src/ai/werka_search.rs` ichida.
+- HTTP multipart parsing/status mapping handler modulida.
+- Core service faqat port chaqiradi.
+- Rust source/test fayllar tekshirildi: eng katta fayl `459` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test`:
+  `189 passed`, `0 failed`.
+- `git diff --check` o'tdi.
+- Yangi route testlar:
+  non-POST
+  non-Werka forbidden
+  config yo'q bo'lsa parse'dan oldin `503`
+  image required
+  success suggestion va MIME detect
+  no result empty suggestion
+- Yangi AI helper testlar:
+  Nivea normalization
+  wrapped JSON extraction
+  MIME detection
+  multipart boundary extraction
+
+Natija:
+
+- Werka domain route coverage:
+  `19/19`.
+- Werka mobile API endpointlari Rustda 100% yopildi.
+
+Keyingi domain tanlash:
+
+- Supplier domainni 100% yopish tavsiya qilinadi.
