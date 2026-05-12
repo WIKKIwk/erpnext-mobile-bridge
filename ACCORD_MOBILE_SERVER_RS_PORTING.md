@@ -329,6 +329,14 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Go handler method check qilmagani uchun suppliers route ham `any` qilindi; `POST /v1/mobile/werka/suppliers` regressiya test bilan yopildi.
 - Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/suppliers` ikkalasi ham array response qaytargani tasdiqlandi.
 - Testlar 106 taga yetdi.
+- `/v1/mobile/werka/customers` endpoint Rust'da qo'shildi.
+- Customer directory response JSON shakli Go bilan mos: `ref`, `name`, `phone`.
+- Direct DB provider Go querysiga mos yozildi: `tabCustomer` + `tabItem Customer Detail` + `tabItem`; faqat item assignment bor va disabled bo'lmagan customer/itemlar chiqadi.
+- Search `customer name/ref/mobile_no` bo'yicha, `modified DESC`, `LIMIT/OFFSET` bilan ishlashi suppliers patterni bilan bir xil port qilindi.
+- Go handler method check qilmagani uchun customers route ham `any` qilindi; `POST /v1/mobile/werka/customers` regressiya test bilan yopildi.
+- Router testlari 500 qator chegarasidan tushishi uchun avatar route testlari alohida `profile_route_tests.rs`ga ajratildi.
+- Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/customers` ikkalasi ham array response qaytargani tasdiqlandi.
+- Testlar 113 taga yetdi.
 
 ## Progress Checklist
 
