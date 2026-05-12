@@ -267,6 +267,13 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Go handler method check qilmagani uchun summary route ham `any` qilindi; `POST /v1/mobile/werka/summary` regressiya test bilan yopildi.
 - Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/summary` ikkalasi ham Werka token bilan summary response qaytargani tasdiqlandi.
 - Testlar 44 taga yetdi.
+- `/v1/mobile/werka/pending` endpoint Rust'da qo'shildi.
+- Pending direct DB provider Go'dagi `pendingTelegramReceiptRows` va `pendingDeliveryNoteRows` querylariga mos alohida yozildi.
+- Pending builder Go'dagi filter/sort/final limit behavior bilan test qilindi.
+- Pending endpoint authsiz `401`, provider yo'q bo'lsa `500 {"error":"pending fetch failed"}`, success response array bo'lishi test qilindi.
+- Go handler method check qilmagani uchun pending route ham `any` qilindi; `POST /v1/mobile/werka/pending` regressiya test bilan yopildi.
+- Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/pending` ikkalasi ham Werka token bilan array response qaytargani tasdiqlandi.
+- Testlar 52 taga yetdi.
 
 ## Progress Checklist
 
