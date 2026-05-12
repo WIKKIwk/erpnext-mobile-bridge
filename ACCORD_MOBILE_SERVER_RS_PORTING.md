@@ -695,3 +695,95 @@ Go endpoint matrix chiqariladi. Har endpoint uchun quyidagilar yoziladi:
 - ERPNext/direct DB dependency
 - JSON store dependency
 - Rust'dagi kelajak modul joyi
+
+## 2026-01-16: Werka Customer Issue Create Rust Port
+
+Portlangan endpoint:
+
+- `POST /v1/mobile/werka/customer-issue/create`
+
+Go audit qilingan joylar:
+
+- `internal/mobileapi/server.go`
+  `handleWerkaCustomerIssueCreate`
+- `internal/core/service.go`
+  `CreateWerkaCustomerIssueWithSource`
+  `normalizeCustomerIssueSource`
+  `customerIssueSourceMarker`
+  `hasDuplicateCustomerIssueSource`
+- `internal/erpnext/delivery_note.go`
+  `CreateDraftDeliveryNote`
+  `UpdateDeliveryNoteState`
+  `SubmitDeliveryNote`
+  `DeleteDeliveryNote`
+  `EnsureDeliveryNoteStateFields`
+- `internal/erpdb/customer_issue.go`
+  `CustomerIssueSourceExists`
+
+Rust'da qo'shilgan asosiy qismlar:
+
+- HTTP route:
+  `/v1/mobile/werka/customer-issue/create`
+- Models:
+  `WerkaCustomerIssueCreateRequest`
+  `WerkaCustomerIssueSource`
+  `WerkaCustomerIssueCreateInput`
+  `WerkaCustomerIssueRecord`
+- Core service:
+  `WerkaService::create_customer_issue`
+- Ports:
+  `WerkaCustomerIssueWriter`
+  `CustomerIssueSourceLookup`
+- ERPNext adapter:
+  item lookup
+  warehouse/company resolve
+  Delivery Note draft create
+  Accord custom field ensure
+  state update
+  submit with one `TimestampMismatchError` retry
+  best-effort delete cleanup on update/submit failure
+- Direct DB duplicate source check:
+  `tabDelivery Note.accord_source_key`
+
+Contract status:
+
+- Non-POST returns `405 {"error":"method not allowed"}`.
+- Missing/invalid bearer returns `401 {"error":"unauthorized"}`.
+- Non-Werka principal returns `403 {"error":"forbidden"}`.
+- Invalid JSON returns `400 {"error":"invalid json"}`.
+- Missing writer/internal failure returns
+  `500 {"error":"werka customer issue create failed"}`.
+- Duplicate source returns
+  `409 {"error":"duplicate customer issue source","error_code":"duplicate_customer_issue_source"}`.
+- Negative stock / `NegativeStockError` returns
+  `409 {"error":"insufficient stock","error_code":"insufficient_stock"}`.
+- Success response Go shape bilan mos:
+  `entry_id`, `customer_ref`, `customer_name`, `item_code`, `item_name`, `uom`, `qty`, `created_label`.
+- Source marker Go tartibida tuziladi:
+  `accord_customer_issue_source:source_barcode=...;source_stock_entry=...;source_line_index=...`
+- `source_line_index < 0` Go kabi tashlab yuboriladi.
+
+Test holati:
+
+- Rust `cargo test`:
+  `137 passed`, `0 failed`.
+- Yangi route testlar:
+  auth required
+  POST-only
+  invalid JSON
+  provider yo'qligi
+  success payload/source metadata
+  duplicate source
+  insufficient stock
+- Yangi service testlar:
+  source marker order/trimming
+  negative line index normalization
+
+Eslatma:
+
+- Go handler successdan keyin customer push yuboradi va push xatosi response'ni yiqitmaydi. Rust serverda push sender hali port qilinmagan, shu sabab bu slice push yubormaydi. Customer issue yaratishning asosiy ERPNext write contracti portlandi; push subsystem port qilinganda shu endpointga best-effort hook ulanishi kerak.
+
+Keyingi mantiqiy nishon:
+
+- `handleWerkaCustomerIssueBatchCreate`
+  yoki push subsystem/notification write contractini audit qilish.
