@@ -321,6 +321,14 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Archive PDF route ham Go handler kabi `any` qilindi; `POST /v1/mobile/werka/archive/pdf` regressiya test bilan yopildi.
 - Real ERPNext smoke testda archive PDF `200`, `application/pdf`, expected attachment filename va `%PDF-1.4` body qaytargani tasdiqlandi.
 - Testlar 97 taga yetdi.
+- `/v1/mobile/werka/suppliers` endpoint Rust'da qo'shildi.
+- Go'dagi query contract ko'chirildi: `q` trim qilinadi, `limit` default/max `200`, invalid/zero limit defaultga qaytadi, invalid/negative offset `0`.
+- Supplier directory response JSON shakli Go bilan mos: `ref`, `name`, `phone`.
+- Direct DB provider Go querysiga mos yozildi: `tabItem Supplier` orqali supplier itemga bog'langan bo'lishi kerak, supplier/item disabled bo'lmasligi kerak, `modified DESC`, `LIMIT/OFFSET`.
+- MySQL LIKE search escaping Go'dagi `likePattern` bilan mos test qilindi.
+- Go handler method check qilmagani uchun suppliers route ham `any` qilindi; `POST /v1/mobile/werka/suppliers` regressiya test bilan yopildi.
+- Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/suppliers` ikkalasi ham array response qaytargani tasdiqlandi.
+- Testlar 106 taga yetdi.
 
 ## Progress Checklist
 
