@@ -298,6 +298,11 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Go handler method check qilmagani uchun status-details route ham `any` qilindi; `POST /v1/mobile/werka/status-details` regressiya test bilan yopildi.
 - Real ERPNext smoke testda `pending/confirmed/returned` kindlari uchun `GET /v1/mobile/werka/status-details` array response qaytargani tasdiqlandi.
 - Testlar 77 taga yetdi.
+- `/v1/mobile/werka/notifications` endpoint Rust'da qo'shildi.
+- Go'da notifications handler bevosita history handlerga alias bo'lgani uchun Rust route ham `werka::history` handlerga ulandi.
+- `GET` va `POST /v1/mobile/werka/notifications` history payload qaytarishi regressiya test bilan yopildi.
+- Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/notifications` ikkalasi ham array response qaytargani tasdiqlandi.
+- Testlar 79 taga yetdi.
 
 ## Progress Checklist
 
