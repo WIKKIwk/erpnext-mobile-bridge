@@ -1299,16 +1299,85 @@ Go `Supplier` route checklist:
 - `[x] /v1/mobile/supplier/summary`
 - `[x] /v1/mobile/supplier/history`
 - `[x] /v1/mobile/supplier/status-breakdown`
-- `[ ] /v1/mobile/supplier/status-details`
+- `[x] /v1/mobile/supplier/status-details`
 - `[ ] /v1/mobile/supplier/items`
 - `[ ] /v1/mobile/supplier/dispatch`
 
 Hozir Supplier route coverage:
 
-- `4/7`
+- `5/7`
 - Keyingi tavsiya qilingan slice:
-  `/v1/mobile/supplier/status-details`
-  chunki `status-breakdown` bilan bir xil kind mapping va receipt source ustida item drill-down qiladi.
+  `/v1/mobile/supplier/items`
+  chunki u supplier uchun item list/search endpointi va keyingi dispatch flow uchun input source bo'ladi.
+
+## 2026-01-26: Supplier Status Details Rust Port
+
+Portlangan endpoint:
+
+- `GET/POST /v1/mobile/supplier/status-details`
+
+Go source audit:
+
+- Handler:
+  `internal/mobileapi/server.go`
+  `handleSupplierStatusDetails`
+- Core:
+  `internal/core/service.go`
+  `SupplierStatusDetails`
+  `recordMatchesSupplierBreakdown`
+
+Go contract:
+
+- Auth required.
+- Role faqat Supplier; boshqa role:
+  `403 {"error":"forbidden"}`.
+- Go handler method check qilmaydi; Rust route ham `any` qilib qo'yildi va `POST` regressiya test bilan yopildi.
+- Provider xatosi yoki provider yo'q bo'lsa:
+  `500 {"error":"supplier status details failed"}`.
+- Query:
+  `kind`
+  `item_code`
+- Supplier kind mapping status-breakdown bilan bir xil:
+  `pending` -> `pending` yoki `draft`
+  `submitted` -> `accepted`
+  `returned` -> `partial`, `rejected`, `cancelled`
+  boshqa kind -> empty array
+- `item_code` bo'sh bo'lsa shu kinddagi barcha recordlar qaytadi.
+- `item_code` bo'lsa `strings.EqualFold(strings.TrimSpace(record.ItemCode), itemCode)` kabi case-insensitive filter qilinadi.
+- Go natijani alohida sort qilmaydi; ERPNext list tartibi saqlanadi.
+- Go 1:1 muhim detal:
+  bu endpoint ham `a.reader` direct DB reader'dan foydalanmaydi.
+  Rustda ham ataylab direct DB shortcut qo'shilmadi; faqat ERPNext purchase receipt lookup ishlatiladi.
+
+Rust'da qo'shilgan qismlar:
+
+- Service:
+  `supplier_status_details`
+- HTTP handler:
+  `src/http/handlers/supplier/read.rs`
+- Route tests:
+  `src/http/supplier_read_route_tests.rs`
+- Core tests:
+  kind filter, item_code case-insensitive filter, ERP list tartibi saqlanishi
+
+Tartib / file hygiene:
+
+- Status details logic supplier read service ichida kichik helper bilan qoldi.
+- Direct DB modulega qo'shilmadi, chunki Go parity shuni talab qiladi.
+- Rust source/test fayllar tekshirildi: eng katta fayl `466` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test`:
+  `207 passed`, `0 failed`.
+- `cargo fmt --check` o'tdi.
+- `git diff --check` o'tdi.
+
+Natija:
+
+- Supplier domain route coverage:
+  `5/7`.
+- Supplier `status-details` endpointi ERPNext fallback yo'li bilan Go contractga mos port qilindi.
 
 ## 2026-01-26: Supplier Status Breakdown Rust Port
 
