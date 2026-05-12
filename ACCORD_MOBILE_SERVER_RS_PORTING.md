@@ -907,8 +907,11 @@ Rust'da qo'shilgan qismlar:
   `src/core/werka/unannounced.rs`
 - Port:
   `WerkaUnannouncedWriter`
+  `WerkaSupplierAdminStateLookup`
 - ERPNext adapter:
   `src/erpnext/purchase_receipt.rs`
+- Admin state store:
+  Go JSON shape ichidagi `assigned_item_codes` fallback o'qiladi.
 
 Tartib / file hygiene:
 
@@ -916,21 +919,29 @@ Tartib / file hygiene:
 - Yangi ERPNext Purchase Receipt write logic `erpnext/purchase_receipt.rs` ichida turibdi.
 - Dispatch mapping va remarks marker helperlari `core/werka/unannounced.rs` ichida turibdi.
 - Rust source/test fayllar tekshirildi: eng katta fayl `484` qatorda, ya'ni `500` limitdan past.
+- Supplier-item validation Go tartibiga mos:
+  direct DB supplier item lookup
+  ERPNext live `Item Supplier` assignment
+  `PermissionError` / `status 403` bo'lsa local `assigned_item_codes` fallback
 
 Test holati:
 
 - Rust `cargo test`:
-  `146 passed`, `0 failed`.
+  `150 passed`, `0 failed`.
 - Yangi route testlar:
   non-POST
   invalid JSON
   provider yo'qligi
   success dispatch record va pending marker
+- Yangi core fallback testlar:
+  direct DB lookup validation
+  ERP permission error bo'lganda admin assigned code fallback
+  non-permission validation error fallback qilinmasligi
 
 Eslatma:
 
 - Go handler successdan keyin supplier push yuboradi va push xatosi response'ni yiqitmaydi. Rust push subsystem hali port qilinmagani uchun bu endpoint hozir push yubormaydi. Push port qilinganda best-effort hook qo'shilishi kerak.
-- Go supplier-item validation ayrim permission holatlarida fallback yo'llariga ega. Rust port hozir ERPNext `Item Supplier` resource orqali tekshiradi. Agar real ERP smoke testda permission xatosi chiqsa, Go'dagi fallback tartibini ham aynan port qilish kerak.
+- Supplier-item validation fallback yo'li ham Rustga port qilindi. Real ERP smoke test baribir kerak, lekin diary bo'yicha bu qism endi "known gap" emas.
 
 Keyingi mantiqiy nishon:
 
