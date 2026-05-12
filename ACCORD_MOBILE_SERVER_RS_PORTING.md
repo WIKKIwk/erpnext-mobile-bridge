@@ -337,6 +337,17 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Router testlari 500 qator chegarasidan tushishi uchun avatar route testlari alohida `profile_route_tests.rs`ga ajratildi.
 - Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/customers` ikkalasi ham array response qaytargani tasdiqlandi.
 - Testlar 113 taga yetdi.
+- `/v1/mobile/werka/supplier-items`, `/v1/mobile/werka/customer-items`, `/v1/mobile/werka/customer-item-options` endpointlari Rust'da qo'shildi.
+- Item response modellari Go bilan mos yozildi: supplier/customer item uchun `code/name/uom/warehouse/item_group,omitempty`, customer option uchun `customer_ref/customer_name/customer_phone/item_code/item_name/uom/warehouse`.
+- Direct DB provider Go'dagi `SearchWerkaSupplierItemsPage`, `SearchWerkaCustomerItemsPage`, `SearchWerkaCustomerItemOptionsPage` SQL va pagination mantiqlariga mos port qilindi.
+- Non-empty `q` qidiruv uchun Go'dagi `SearchQueryScore`, transliteration, compact/skeleton matching, score sort va tie-break qoidalari alohida `werka_item_search.rs` modulida test bilan yopildi.
+- Go'dagi `defaultWarehouse` behaviori Rust direct DB configga `ERP_DEFAULT_TARGET_WAREHOUSE` orqali ulandi, aks holda item response'dagi `warehouse` bo'sh qolib ketardi.
+- Go handler method check qilmagani uchun uchala item route ham `any` qilindi; `POST` regressiya test bilan yopildi.
+- Authsiz `401`, provider yo'q bo'lsa Go error textlari bilan `500`, invalid limit/offset defaultlari va query trim/clamp behaviorlari route testlar bilan yopildi.
+- Katta fayl bo'lmasligi uchun direct DB lookup impl `werka_lookup.rs`, item SQL/load `werka_items.rs`, ranking/search `werka_item_search.rs`, route testlar `werka_items_route_tests.rs` qilib ajratildi.
+- Real ERPNext smoke testda Werka login token 32 belgi qaytdi; `customer-items`, qidiruvli `customer-items`, `customer-item-options`, va supplier assignment yo'q holatda `supplier-items` 200 response bilan tasdiqlandi.
+- Real SQL solishtirishda `customer-items` va `customer-item-options` birinchi natijalari Go SQL contractiga mosligi tekshirildi.
+- Testlar 128 taga yetdi.
 
 ## Progress Checklist
 
