@@ -274,6 +274,9 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Go handler method check qilmagani uchun pending route ham `any` qilindi; `POST /v1/mobile/werka/pending` regressiya test bilan yopildi.
 - Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/pending` ikkalasi ham Werka token bilan array response qaytargani tasdiqlandi.
 - Testlar 52 taga yetdi.
+- Router fayli 500 qator chegarasiga yetgani uchun router testlari `src/http/router_tests.rs`ga ajratildi.
+- Production `src/http/router.rs` 33 qatorga tushirildi, behavior o'zgarmadi.
+- Refactordan keyin `cargo test` 52 ta test bilan yana pass bo'ldi.
 
 ## Progress Checklist
 
