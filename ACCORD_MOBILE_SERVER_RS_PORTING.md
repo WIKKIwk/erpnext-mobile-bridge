@@ -850,3 +850,88 @@ Eslatma:
 Keyingi mantiqiy nishon:
 
 - Push subsystem/notification write contractini audit qilish yoki navbatdagi Werka write endpointga o'tish.
+
+## 2026-01-16: Werka Unannounced Create Rust Port
+
+Portlangan endpoint:
+
+- `POST /v1/mobile/werka/unannounced/create`
+
+Go audit qilingan joylar:
+
+- `internal/mobileapi/server.go`
+  `handleWerkaUnannouncedCreate`
+- `internal/core/service.go`
+  `CreateWerkaUnannouncedDraft`
+  `findSupplierForAdmin`
+  `validateSupplierItemAllowed`
+  `resolveWarehouse`
+- `internal/erpnext/purchase_receipt.go`
+  `CreateDraftPurchaseReceipt`
+  `UpsertWerkaUnannouncedInRemarks`
+  `UpdatePurchaseReceiptRemarks`
+  `AddPurchaseReceiptComment`
+
+Muhim Go behavior:
+
+- Method faqat `POST`; boshqa method `405 {"error":"method not allowed"}`.
+- Werka auth required.
+- Invalid JSON `400 {"error":"invalid json"}`.
+- Request body:
+  `supplier_ref`, `item_code`, `qty`.
+- Failure umumiy ko'rinishda:
+  `500 {"error":"werka unannounced create failed"}`.
+- Success Purchase Receipt draft yaratadi.
+- Remarks ichiga Werka unannounced marker qo'yiladi:
+  `Accord Werka Aytilmagan: pending`
+- Purchase Receipt comment best-effort qo'shiladi.
+- Response dispatch record bo'lib qaytadi:
+  `record_type = "purchase_receipt"`
+  `event_type = "werka_unannounced_pending"`
+  `highlight = "Werka siz qayd etmagan mahsulotni qabul qildi"`
+
+Rust'da qo'shilgan qismlar:
+
+- HTTP route:
+  `/v1/mobile/werka/unannounced/create`
+- Handler:
+  `src/http/handlers/werka/unannounced.rs`
+- Models:
+  `WerkaUnannouncedCreateRequest`
+  `PurchaseReceiptDraft`
+  `CreatePurchaseReceiptInput`
+  `WerkaSupplierRecord`
+- Core service:
+  `WerkaService::create_werka_unannounced_draft`
+- Core helper:
+  `src/core/werka/unannounced.rs`
+- Port:
+  `WerkaUnannouncedWriter`
+- ERPNext adapter:
+  `src/erpnext/purchase_receipt.rs`
+
+Tartib / file hygiene:
+
+- Go'dagi katta service ichidagi logic Rust'da alohida modullarga bo'lindi.
+- Yangi ERPNext Purchase Receipt write logic `erpnext/purchase_receipt.rs` ichida turibdi.
+- Dispatch mapping va remarks marker helperlari `core/werka/unannounced.rs` ichida turibdi.
+- Rust source/test fayllar tekshirildi: eng katta fayl `484` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test`:
+  `146 passed`, `0 failed`.
+- Yangi route testlar:
+  non-POST
+  invalid JSON
+  provider yo'qligi
+  success dispatch record va pending marker
+
+Eslatma:
+
+- Go handler successdan keyin supplier push yuboradi va push xatosi response'ni yiqitmaydi. Rust push subsystem hali port qilinmagani uchun bu endpoint hozir push yubormaydi. Push port qilinganda best-effort hook qo'shilishi kerak.
+- Go supplier-item validation ayrim permission holatlarida fallback yo'llariga ega. Rust port hozir ERPNext `Item Supplier` resource orqali tekshiradi. Agar real ERP smoke testda permission xatosi chiqsa, Go'dagi fallback tartibini ham aynan port qilish kerak.
+
+Keyingi mantiqiy nishon:
+
+- Navbatdagi Werka write endpoint yoki push subsystem/notification write contractini audit qilish.
