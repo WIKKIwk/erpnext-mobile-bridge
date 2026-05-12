@@ -254,6 +254,12 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Go'dagi pending limit pre-append behavior ham test bilan saqlandi.
 - Real ERPNext smoke testda Werka login `200/werka/token` qaytardi va `werka_home` direct DB provider orqali response'da borligi tasdiqlandi.
 - Testlar 31 taga yetdi.
+- `GET /v1/mobile/werka/home` endpoint Rust'da qo'shildi.
+- Endpoint Go'dagi kabi Bearer session auth talab qiladi va faqat `role=werka` uchun `200` qaytaradi.
+- Authsiz holat `401 {"error":"unauthorized"}`, boshqa role `403 {"error":"forbidden"}`, provider/data xatosi `500 {"error":"werka home failed"}` bilan test qilindi.
+- Go handler method check qilmagani uchun Rust route ham `any` qilib qo'yildi; `POST /v1/mobile/werka/home` ham Go kabi ishlashi regressiya test bilan yopildi.
+- Real ERPNext smoke testda `GET` va `POST /v1/mobile/werka/home` ikkalasi ham Werka token bilan `summary/pending_items` response qaytargani tasdiqlandi.
+- Testlar 36 taga yetdi.
 
 ## Progress Checklist
 
