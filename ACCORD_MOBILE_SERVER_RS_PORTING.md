@@ -946,3 +946,110 @@ Eslatma:
 Keyingi mantiqiy nishon:
 
 - Navbatdagi Werka write endpoint yoki push subsystem/notification write contractini audit qilish.
+
+## 2026-01-16: Supplier Unannounced Respond Rust Port
+
+Portlangan endpoint:
+
+- `POST /v1/mobile/supplier/unannounced/respond`
+
+Go audit qilingan joylar:
+
+- `internal/mobileapi/server.go`
+  `handleSupplierUnannouncedRespond`
+- `internal/core/types.go`
+  `SupplierUnannouncedResponseRequest`
+  `NotificationDetail`
+  `NotificationComment`
+- `internal/core/service.go`
+  `RespondWerkaUnannouncedDraft`
+  `NotificationDetail`
+  `mapPurchaseReceiptToDispatchRecord`
+  `parseNotificationComment`
+- `internal/erpnext/purchase_receipt.go`
+  `GetPurchaseReceipt`
+  `UpdatePurchaseReceiptRemarks`
+  `ConfirmAndSubmitPurchaseReceipt`
+  `ListPurchaseReceiptComments`
+  `AddPurchaseReceiptComment`
+  `UpsertWerkaUnannouncedInRemarks`
+  `ExtractWerkaUnannouncedState`
+  `ExtractWerkaUnannouncedReason`
+
+Muhim Go behavior:
+
+- Method faqat `POST`; boshqa method `405 {"error":"method not allowed"}`.
+- Auth required.
+- Role faqat supplier; boshqa role `403 {"error":"forbidden"}`.
+- Invalid JSON `400 {"error":"invalid json"}`.
+- Request body:
+  `receipt_id`, `approve`, `reason`.
+- Core flow faqat pending Werka unannounced Purchase Receipt uchun ishlaydi.
+- Purchase Receipt supplieri principal `ref` bilan mos bo'lishi kerak.
+- Failure umumiy ko'rinishda:
+  `500 {"error":"supplier unannounced response failed"}`.
+- `approve=true`:
+  remarks `approved` markerga o'tadi
+  Purchase Receipt accepted qty bilan submit qilinadi
+  best-effort comment qo'shiladi
+  response `NotificationDetail`
+  response record override:
+  `accepted_qty = result.accepted_qty`
+  `status = "accepted"`
+  `event_type`, `highlight`, `note` bo'shatiladi
+- `approve=false`:
+  remarks `rejected` markerga o'tadi
+  reason remarks ichida saqlanadi
+  best-effort comment qo'shiladi
+  response `NotificationDetail`
+  dispatch note:
+  `Supplier aytilmagan molni rad etdi.`
+  reason bo'lsa `Sabab: ...`
+
+Rust'da qo'shilgan qismlar:
+
+- HTTP route:
+  `/v1/mobile/supplier/unannounced/respond`
+- Handler:
+  `src/http/handlers/supplier/unannounced.rs`
+- Models:
+  `SupplierUnannouncedResponseRequest`
+  `NotificationDetail`
+  `NotificationComment`
+- Core service extension:
+  `WerkaService::respond_supplier_unannounced`
+- Core helper:
+  `src/core/werka/supplier_unannounced.rs`
+  `src/core/werka/unannounced.rs`
+- Port:
+  `SupplierUnannouncedWriter`
+- ERPNext adapter:
+  `src/erpnext/purchase_receipt/response.rs`
+
+Tartib / file hygiene:
+
+- Supplier respond logic alohida `core/werka/supplier_unannounced.rs` fayliga chiqarildi.
+- ERPNext submit/comment/detail logic `erpnext/purchase_receipt/response.rs` submodule ichida turibdi.
+- Asosiy `service.rs` 500 qatordan past saqlandi.
+- Rust source/test fayllar tekshirildi: eng katta fayl `484` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test`:
+  `156 passed`, `0 failed`.
+- Yangi route testlar:
+  non-POST
+  non-supplier forbidden
+  invalid JSON
+  provider yo'qligi
+  approve success response
+  reject success response reason bilan
+
+Eslatma:
+
+- Go handler response'dan keyin Werka uchun best-effort push yuboradi. Rust push subsystem hali port qilinmagani uchun bu endpoint hozir push yubormaydi. Push port qilinganda `Supplier javob berdi` hook response'ni yiqitmaydigan qilib ulanishi kerak.
+- `ConfirmAndSubmitPurchaseReceipt` approve path uchun port qilindi. Partial/returned qty flowlari bu endpointda ishlatilmaydi; ular keyingi supplier/customer receipt response flowlarda alohida 1:1 audit qilinadi.
+
+Keyingi mantiqiy nishon:
+
+- Push subsystem/notification write contracti yoki navbatdagi supplier/customer operational endpoint.
