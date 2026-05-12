@@ -233,6 +233,12 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Supplier avatar proxy token URL encoding bilan test qilindi.
 - Customer avatar URL proxy qilinmasligi test bilan yopildi.
 - Testlar 20 taga yetdi.
+- Supplier avatar view/download endpoint qo'shildi.
+- Avatar view query token va Bearer token auth yo'llarini qo'llaydi.
+- Supplier bo'lmagan principal uchun avatar view `403` qaytarishi test qilindi.
+- Authsiz avatar view `401` qaytarishi test qilindi.
+- ERPNext file download adapteri profile lookup orqali ulandi.
+- Testlar 23 taga yetdi.
 
 ## Progress Checklist
 
@@ -557,6 +563,7 @@ Portlangan:
 - Login/me profile refresh.
 - Supplier/customer ERPNext profile lookup.
 - Supplier avatar proxy response rewrite.
+- Supplier avatar view/download endpoint.
 - Phone normalization.
 - Role prefix inference.
 - Login response skeleton.
@@ -567,7 +574,6 @@ Portlangan:
 
 Hali portlanmagan:
 
-- Supplier avatar view/download endpoint.
 - Werka login response ichidagi `werka_home` preload.
 
 ## Keyingi Qadam
