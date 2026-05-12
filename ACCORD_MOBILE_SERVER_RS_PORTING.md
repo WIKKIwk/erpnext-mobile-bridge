@@ -2026,3 +2026,101 @@ Natija:
 Keyingi domain tanlash:
 
 - Supplier domainni 100% yopish tavsiya qilinadi.
+
+## Customer Domain Port
+
+Go audit qilingan route/handlerlar:
+
+- `handleCustomerSummary`
+- `handleCustomerHistory`
+- `handleCustomerStatusDetails`
+- `handleCustomerDetail`
+- `handleCustomerRespond`
+
+Go behavior contract:
+
+- `/v1/mobile/customer/summary`
+  auth talab qiladi, faqat `customer`, method cheklanmagan.
+- `/v1/mobile/customer/history`
+  auth talab qiladi, faqat `customer`, method cheklanmagan.
+- `/v1/mobile/customer/status-details`
+  auth talab qiladi, faqat `customer`, `kind=confirmed` Go ichida `accepted`ga map qilinadi.
+- `/v1/mobile/customer/detail`
+  auth talab qiladi, faqat `customer`, `delivery_note_id` bo'sh bo'lsa `400`.
+- `/v1/mobile/customer/respond`
+  faqat `POST`, invalid JSON `400`, invalid input `400`, boshqa customer DN uchun `403`.
+- Customer delivery visible rule:
+  `docstatus = 1` va `accord_flow_state = 1`.
+- Status mapping:
+  `accord_customer_state=3 -> accepted`
+  `4 -> partial`
+  `2 -> rejected`
+  default -> pending.
+- Summary mapping:
+  `accepted -> confirmed_count`
+  `partial/rejected -> rejected_count`
+  qolgan visible -> pending_count.
+- Reject/partial/claim uchun kamida 3 rune reason yoki comment talab qilinadi.
+- `accept_all`, `reject_all`, `accept_partial`, `claim_after_accept` response modelari Go bilan mos port qilindi.
+- Partial/reject return path ERPNext `Delivery Note` return create/submit orqali yuradi.
+- Remarks compact markerlari Go bilan mos:
+  `AC:`, `AR:`, `AQ:`, `AT:`, `AX:`.
+
+Rust'da qo'shilgan qismlar:
+
+- Core module:
+  `src/core/customer/`
+- Models:
+  `CustomerHomeSummary`
+  `CustomerDeliveryDetail`
+  `CustomerDeliveryResponseRequest`
+  `CustomerDeliveryResponseMode`
+- Port:
+  `CustomerDeliveryPort`
+- Service:
+  Customer summary/history/status detail/detail/respond logic.
+- HTTP handler:
+  `src/http/handlers/customer.rs`
+- Routes:
+  `/v1/mobile/customer/summary`
+  `/v1/mobile/customer/history`
+  `/v1/mobile/customer/status-details`
+  `/v1/mobile/customer/detail`
+  `/v1/mobile/customer/respond`
+- ERPNext adapter:
+  Customer delivery note list/get.
+  Delivery note return create/submit.
+  Delivery note remarks/state update.
+- Runtime wiring:
+  `AppState.customer` ERP config bo'lsa `ErpnextClient` bilan ulanadi.
+
+Muhim note:
+
+- Go `customer/respond` successdan keyin Werka/Admin push yuboradi.
+- Rust push subsystem hali umumiy port qilinmagan, shuning uchun route/response va ERP mutation parity yopildi, push hook parity keyingi push subsystem auditida ulanadi.
+
+Test holati:
+
+- Rust `cargo test`:
+  `226 passed`, `0 failed`.
+- Yangi service testlar:
+  summary count mapping
+  confirmed -> accepted status detail
+  reject reason validation
+  partial response return/state/remarks update
+- Yangi route testlar:
+  customer summary POST accept
+  non-customer forbidden
+  detail `delivery_note_id` required
+  respond GET method not allowed
+  respond success detail response
+
+Natija:
+
+- Customer domain route coverage:
+  `5/5`.
+- Customer mobile API route/response contract Rustda yopildi.
+
+Keyingi domain tanlash:
+
+- Profile standalone yoki Push subsystemdan biri keyingi tabiiy kichik scope.
