@@ -1300,15 +1300,108 @@ Go `Supplier` route checklist:
 - `[x] /v1/mobile/supplier/history`
 - `[x] /v1/mobile/supplier/status-breakdown`
 - `[x] /v1/mobile/supplier/status-details`
-- `[ ] /v1/mobile/supplier/items`
+- `[x] /v1/mobile/supplier/items`
 - `[ ] /v1/mobile/supplier/dispatch`
 
 Hozir Supplier route coverage:
 
-- `5/7`
+- `6/7`
 - Keyingi tavsiya qilingan slice:
+  `/v1/mobile/supplier/dispatch`
+  chunki supplier items endi yopildi va dispatch shu item contractga tayanadi.
+
+## 2026-01-26: Supplier Items Rust Port
+
+Portlangan endpoint:
+
+- `GET/POST /v1/mobile/supplier/items`
+
+Go source audit:
+
+- Handler:
+  `internal/mobileapi/server.go`
+  `handleSupplierItems`
+- Core:
+  `internal/core/service.go`
+  `SupplierItems`
+- Admin supplier helper:
+  `internal/core/admin_suppliers.go`
+  `supplierAllowedItems`
+  `adminAssignedItems`
+  `filterSupplierItemsByQuery`
+  `mapSupplierItems`
+- ERPNext adapter:
+  `internal/erpnext/purchase_receipt.go`
+  `ListAssignedSupplierItems`
+  `GetItemsByCodes`
+  `fetchSupplierItemCodes`
+  `searchItemsByCodes`
+
+Go contract:
+
+- Auth required.
+- Role faqat Supplier; boshqa role:
+  `403 {"error":"forbidden"}`.
+- Go handler method check qilmaydi; Rust route ham `any` qilib qo'yildi va `POST` regressiya test bilan yopildi.
+- Query:
+  `q`
+  trim qilinadi.
+- Limit handlerdan doim:
+  `20`.
+- Supplier admin state `removed` yoki `blocked` bo'lsa:
+  `200 []`.
+- Provider xatosi yoki provider yo'q bo'lsa:
+  `500 {"error":"supplier items failed"}`.
+- Direct DB reader bo'lsa avval `SearchWerkaSupplierItemsPage(supplierRef, "", pageLimit, offset)` orqali page qilib o'qiladi.
+- Direct DB error bersa Go kabi break qilinadi; result bo'lsa shu qaytadi, bo'lmasa ERPNext fallbackga o'tadi.
+- ERPNext fallback `Item Supplier` orqali supplierga assigned itemlarni topadi.
+- ERPNext `Item Supplier` permission error bersa va admin state ichida `AssignedItemCodes` bo'lsa, Go'dagi fallback kabi `GetItemsByCodes` ishlatiladi.
+- Query filter Go'dagi supplier allowed items mantiqiga mos:
+  lowercase contains `code` yoki `name`.
+- ERPNext item fetch Go bilan 1:1 bo'lishi uchun supplier-items adapter `item_group` fieldini so'ramaydi; direct DB path qaytarsa field saqlanadi, ERP fallbackda bo'sh field serialize qilinmaydi.
+
+Rust'da qo'shilgan qismlar:
+
+- Service:
+  `supplier_mobile_items`
+  `admin_assigned_items`
+- Port:
+  `SupplierItemLookup`
+- ERPNext adapter:
+  `src/erpnext/supplier_items.rs`
+- Runtime wiring:
+  `with_supplier_item_lookup`
+- HTTP handler:
+  `src/http/handlers/supplier/read.rs`
+- Route:
   `/v1/mobile/supplier/items`
-  chunki u supplier uchun item list/search endpointi va keyingi dispatch flow uchun input source bo'ladi.
+- Route tests:
+  `src/http/supplier_items_route_tests.rs`
+- Core tests:
+  query filter + limit
+  permission fallback + assigned item codes
+
+Tartib / file hygiene:
+
+- Supplier item ERPNext logic alohida `src/erpnext/supplier_items.rs` fayliga ajratildi.
+- HTTP handler mavjud supplier read modulida kichik function sifatida qoldi.
+- Core helperlar supplier read modulida, lekin dispatch logic bilan aralashtirilmadi.
+- Rust source/test fayllar tekshirildi: eng katta fayl `480` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test supplier_items`:
+  `7 passed`, `0 failed`.
+- Rust `cargo test`:
+  `212 passed`, `0 failed`.
+- `cargo fmt --check` o'tdi.
+- `git diff --check` o'tdi.
+
+Natija:
+
+- Supplier domain route coverage:
+  `6/7`.
+- Supplier `items` endpointi direct DB, ERPNext assignment lookup va permission fallback yo'llari bilan Go contractga mos port qilindi.
 
 ## 2026-01-26: Supplier Status Details Rust Port
 
