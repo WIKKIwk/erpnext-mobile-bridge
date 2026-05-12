@@ -1149,3 +1149,102 @@ Keyingi mantiqiy nishon:
 
 - Avval file hygiene: `service.rs` va `service_tests.rs`ni kichikroq modullarga bo'lish.
 - Keyin `POST /v1/mobile/notifications/comments` route'ini 1:1 port qilish.
+
+## 2026-01-16: Notification Comment Rust Port
+
+Portlangan endpoint:
+
+- `POST /v1/mobile/notifications/comments`
+
+Go audit qilingan joylar:
+
+- `internal/mobileapi/server.go`
+  `handleNotificationComment`
+- `internal/core/types.go`
+  `NotificationCommentCreateRequest`
+- `internal/core/service.go`
+  `AddNotificationComment`
+  `NotificationDetail`
+  `resolveNotificationTarget`
+  `formatNotificationComment`
+  `isSupplierAcknowledgmentMessage`
+- `internal/erpnext/purchase_receipt.go`
+  `AddPurchaseReceiptComment`
+  `UpdatePurchaseReceiptRemarks`
+  `UpsertSupplierAcknowledgmentInRemarks`
+  `GetPurchaseReceipt`
+- `internal/erpnext/delivery_note.go`
+  `AddDeliveryNoteComment`
+
+Muhim Go behavior:
+
+- Method faqat `POST`; boshqa method `405 {"error":"method not allowed"}`.
+- Auth required.
+- Role faqat supplier, werka, customer; admin va boshqa role `403 {"error":"forbidden"}`.
+- Query `receipt_id` bo'sh bo'lsa `400 {"error":"receipt_id is required"}`.
+- Invalid JSON:
+  `400 {"error":"invalid json"}`.
+- Empty/whitespace `message` core'da xato bo'ladi va handler Go kabi `500 {"error":"notification comment failed"}` qaytaradi.
+- Comment yozishdan oldin `NotificationDetail` chaqiriladi, shu orqali access/existence tekshiriladi.
+- Purchase Receipt target:
+  `Comment` doctype orqali `reference_doctype = "Purchase Receipt"` yoziladi.
+- Delivery Note target:
+  `Comment` doctype orqali `reference_doctype = "Delivery Note"` yoziladi.
+- Comment content formati:
+  `Supplier|Werka|Customer|Admin • DisplayName\nmessage`.
+- Supplier message `tasdiqlayman` bilan boshlansa:
+  PR qayta olinadi
+  remarks ichida `Supplier tasdiqladi:` display line olib tashlanadi
+  `Accord Supplier Tasdiq: <message>` qo'shiladi
+  remarks update xatosi Go kabi best-effort, response'ni yiqitmaydi.
+- Handler supplier acknowledgment'dan keyin Werka'ga best-effort push yuboradi. Rust push subsystem hali port qilinmagani uchun push hook hozircha pending parity gap.
+
+Rust'da qo'shilgan qismlar:
+
+- HTTP route:
+  `/v1/mobile/notifications/comments`
+- Handler:
+  `src/http/handlers/notifications.rs`
+- Request model:
+  `NotificationCommentCreateRequest`
+- Core flow:
+  `src/core/werka/notification_comment.rs`
+- Ports:
+  `NotificationDetailWriter` comment/remarks write metodlari bilan kengaydi.
+- ERPNext adapter:
+  `src/erpnext/notification.rs`
+- Route tests:
+  `src/http/notification_comment_route_tests.rs`
+
+Tartib / file hygiene:
+
+- Notification detail logic `notification.rs` ichida qoldi.
+- Notification comment write flow alohida `notification_comment.rs` fayliga ajratildi.
+- Route tests detail va comment bo'yicha alohida fayllarga bo'lindi.
+- Rust source/test fayllar tekshirildi: eng katta fayl `459` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test`:
+  `172 passed`, `0 failed`.
+- `git diff --check` o'tdi.
+- Yangi route testlar:
+  non-POST
+  missing `receipt_id`
+  invalid JSON
+  admin forbidden
+  whitespace message Go kabi `500`
+  supplier Purchase Receipt comment
+  supplier acknowledgment remarks update
+  customer Delivery Note comment
+
+Eslatma:
+
+- Cargo global cache permission warning chiqadi:
+  `/home/wikki/.cargo/registry/... Permission denied`
+  lekin test/build yiqilmadi.
+- Push subsystem hali port qilinmagani uchun `supplier_ack` push hook bu slice'da bajarilmadi. Keyingi push slice'da handler response'ni yiqitmaydigan best-effort send sifatida ulanishi kerak.
+
+Keyingi mantiqiy nishon:
+
+- Push subsystemni port qilish yoki navbatdagi notification/customer operational endpointni audit qilish.
