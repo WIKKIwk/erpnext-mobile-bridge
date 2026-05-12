@@ -1053,3 +1053,99 @@ Eslatma:
 Keyingi mantiqiy nishon:
 
 - Push subsystem/notification write contracti yoki navbatdagi supplier/customer operational endpoint.
+
+## 2026-01-16: Notification Detail Rust Port
+
+Portlangan endpoint:
+
+- `GET /v1/mobile/notifications/detail`
+
+Go audit qilingan joylar:
+
+- `internal/mobileapi/server.go`
+  `handleNotificationDetail`
+- `internal/core/service.go`
+  `NotificationDetail`
+  `resolveNotificationTarget`
+  `mapPurchaseReceiptToDispatchRecord`
+  `mapDeliveryNoteToDispatchRecord`
+  `buildCustomerDeliveryResultEvent`
+  `parseNotificationComment`
+- `internal/erpdb/notification_detail.go`
+  `NotificationDetailByReceiptID`
+  `purchaseReceiptNotificationDetail`
+  `deliveryNoteNotificationDetail`
+  `notificationComments`
+- `internal/erpnext/purchase_receipt.go`
+  `GetPurchaseReceipt`
+  `ListPurchaseReceiptComments`
+- `internal/erpnext/delivery_note.go`
+  `GetDeliveryNote`
+  `ListDeliveryNoteComments`
+
+Muhim Go behavior:
+
+- Method faqat `GET`; boshqa method `405 {"error":"method not allowed"}`.
+- Auth required.
+- Role faqat supplier, werka, customer; admin va boshqa role `403 {"error":"forbidden"}`.
+- Query `receipt_id` bo'sh bo'lsa `400 {"error":"receipt_id is required"}`.
+- Unauthorized detail access `403 {"error":"forbidden"}`.
+- Boshqa failure:
+  `500 {"error":"notification detail failed"}`.
+- Purchase Receipt detail:
+  customer role ocholmaydi
+  supplier faqat o'z `supplier_ref` recordini ochadi
+  supplier display name response recordga override qilinadi
+  `supplier_ack:` id event sifatida taniladi
+- Delivery Note detail:
+  `customer_delivery_result:` id delivery note targetga resolve qilinadi
+  customer faqat o'z delivery note recordini ochadi
+  accepted/partial/rejected result event highlight bilan qaytadi
+- Go avval direct DB `NotificationDetailByReceiptID` ishlatadi; DB xato bersa ERPNext fallbackga o'tadi.
+
+Rust'da qo'shilgan qismlar:
+
+- HTTP route:
+  `/v1/mobile/notifications/detail`
+- Handler:
+  `src/http/handlers/notifications.rs`
+- Core helper:
+  `src/core/werka/notification.rs`
+- Ports:
+  `NotificationDetailWriter`
+  `NotificationDetailLookup`
+- ERPNext adapter:
+  `src/erpnext/notification.rs`
+- Direct DB adapter:
+  `src/erpdb/notification_detail.rs`
+
+Tartib / file hygiene:
+
+- Notification target resolve, auth visibility, PR/DN mapping `core/werka/notification.rs` ichida alohida turibdi.
+- ERPNext detail adapteri `erpnext/notification.rs` ichida.
+- Direct DB detail lookup `erpdb/notification_detail.rs` ichida.
+- Rust source/test fayllar tekshirildi: eng katta fayl `493` qatorda, ya'ni `500` limitdan past.
+- Keyingi slice oldidan `service.rs` va `service_tests.rs`ni yana bo'lish kerak, chunki ikkalasi ham limitga yaqinlashdi.
+
+Test holati:
+
+- Rust `cargo test`:
+  `163 passed`, `0 failed`.
+- Yangi route testlar:
+  non-GET
+  missing `receipt_id`
+  admin forbidden
+  provider yo'qligi
+  supplier Purchase Receipt detail
+  customer Purchase Receipt forbidden
+  customer delivery result event detail
+
+Eslatma:
+
+- `POST /v1/mobile/notifications/comments` hali port qilinmagan. U write flow bo'lgani uchun alohida slice bo'ladi.
+- Push subsystem hali port qilinmagan; notification comment ichidagi supplier acknowledgment push hook keyingi comment/push slice'da yopiladi.
+
+Keyingi mantiqiy nishon:
+
+- Avval file hygiene: `service.rs` va `service_tests.rs`ni kichikroq modullarga bo'lish.
+- Keyin `POST /v1/mobile/notifications/comments` route'ini 1:1 port qilish.
