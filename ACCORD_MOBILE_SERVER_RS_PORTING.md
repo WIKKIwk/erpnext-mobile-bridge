@@ -246,6 +246,14 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - `werka_home` bor/yo'qligi JSON serialization regressiya testlari bilan yopildi.
 - WerkaHome data source uchun port/interface ajratildi, lekin direct DB/ERP runtime provider hali keyingi scope sifatida qolmoqda.
 - Testlar 27 taga yetdi.
+- WerkaHome direct DB runtime provider Rust'da `sqlx/mysql` bilan qo'shildi.
+- Go'dagi `ERP_DIRECT_READ_ENABLED=1` va `ERP_DIRECT_SITE_CONFIG_PATH` env kontrakti Rust config'ga ko'chirildi.
+- Frappe `site_config.json` dan `db_name`, `db_password`, `db_type` o'qish Go'dagi kabi port qilindi.
+- WerkaHome query'lari `tabPurchase Receipt` + `tabPurchase Receipt Item` va `tabDelivery Note` + `tabDelivery Note Item` ustida Go selectlariga mos yozildi.
+- Purchase Receipt status klassifikatsiyasi, Telegram marker qty, `Accord Werka Aytilmagan` hide qoidalari va Delivery Note customer state mapping test bilan yopildi.
+- Go'dagi pending limit pre-append behavior ham test bilan saqlandi.
+- Real ERPNext smoke testda Werka login `200/werka/token` qaytardi va `werka_home` direct DB provider orqali response'da borligi tasdiqlandi.
+- Testlar 31 taga yetdi.
 
 ## Progress Checklist
 
@@ -266,7 +274,7 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 ## Ochiq Savollar
 
 - Rust versiya Go server bilan bir xil port/env nomlarini ishlatadimi yoki `*_RS` prefikslari ham bo'ladimi?
-- Direct DB uchun `sqlx` tanlaymizmi yoki `mysql_async`?
+- Direct DB uchun `sqlx` tanlandi.
 - Avatar upload birinchi scope ichida bo'ladimi yoki profile basicdan keyinmi?
 - Admin hardcoded identity Rust'da ham aynan shunday qoladimi yoki konfiguratsiyaga chiqariladimi?
 
