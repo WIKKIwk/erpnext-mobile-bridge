@@ -207,6 +207,11 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Logout bearer token yo'q bo'lsa `401` qaytaradigan qilindi.
 - `/v1/mobile/me` route uchun regressiya testi qo'shildi.
 - Testlar 8 taga yetdi.
+- Supplier login uchun Rust port interface'lari qo'shildi.
+- Supplier deterministic access code Go algoritmiga mos portlandi.
+- Supplier login `SearchSuppliers(phone, 50)` va fallback `SearchSuppliers("", 500)` tartibida yozildi.
+- Supplier `blocked/removed/custom_code` state qoidalari test bilan yopildi.
+- Testlar 11 taga yetdi.
 
 ## Progress Checklist
 
@@ -520,6 +525,9 @@ Portlangan:
 
 - Admin login.
 - Werka login.
+- Supplier login service logic.
+- Supplier deterministic access code.
+- Supplier lookup/admin state port interface'lari.
 - Phone normalization.
 - Role prefix inference.
 - Login response skeleton.
@@ -530,7 +538,7 @@ Portlangan:
 
 Hali portlanmagan:
 
-- Supplier login ERPNext search + access code.
+- Supplier login runtime ERPNext adapter wiring.
 - Customer login ERPNext search + custom code state.
 - Login ichidagi `Profile` refresh.
 - Supplier avatar proxy.
