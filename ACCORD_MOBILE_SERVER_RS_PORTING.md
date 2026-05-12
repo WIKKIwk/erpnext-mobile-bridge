@@ -217,6 +217,12 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - `ERP_URL`, `ERP_API_KEY`, `ERP_API_SECRET`, `ERP_TIMEOUT_SECONDS` config'lari Rust runtime'ga qo'shildi.
 - ERP config to'liq bo'lsa supplier login runtime wiring auth service'ga ulanadigan qilindi.
 - Testlar 13 taga yetdi.
+- Real ERPNext smoke testda vaqtinchalik supplier yaratilib, Rust supplier login `200/supplier/token` bilan tasdiqlandi va cleanup qilindi.
+- Customer login core logic qo'shildi.
+- Customer login uchun custom code majburiyligi test bilan yopildi.
+- ERPNext customer search runtime adapter qo'shildi.
+- Real ERPNext smoke testda vaqtinchalik customer va temp admin state bilan Rust customer login `200/customer/token` bilan tasdiqlandi va cleanup qilindi.
+- Testlar 16 taga yetdi.
 
 ## Progress Checklist
 
@@ -535,6 +541,9 @@ Portlangan:
 - Supplier lookup/admin state port interface'lari.
 - Supplier login runtime ERPNext adapter wiring.
 - Supplier admin state JSON store.
+- Customer login service logic.
+- Customer login runtime ERPNext adapter wiring.
+- Customer custom code state check.
 - Phone normalization.
 - Role prefix inference.
 - Login response skeleton.
@@ -545,8 +554,6 @@ Portlangan:
 
 Hali portlanmagan:
 
-- Supplier login real ERPNext smoke test.
-- Customer login ERPNext search + custom code state.
 - Login ichidagi `Profile` refresh.
 - Supplier avatar proxy.
 - Werka login response ichidagi `werka_home` preload.
