@@ -1297,18 +1297,111 @@ Go `Supplier` route checklist:
 
 - `[x] /v1/mobile/supplier/unannounced/respond`
 - `[x] /v1/mobile/supplier/summary`
+- `[x] /v1/mobile/supplier/history`
 - `[ ] /v1/mobile/supplier/status-breakdown`
 - `[ ] /v1/mobile/supplier/status-details`
-- `[ ] /v1/mobile/supplier/history`
 - `[ ] /v1/mobile/supplier/items`
 - `[ ] /v1/mobile/supplier/dispatch`
 
 Hozir Supplier route coverage:
 
-- `2/7`
+- `3/7`
 - Keyingi tavsiya qilingan slice:
-  `/v1/mobile/supplier/history`
-  chunki `summary` bilan bir xil purchase receipt source va auth contractdan foydalanadi.
+  `/v1/mobile/supplier/status-breakdown`
+  chunki `history` bilan bir xil purchase receipt source ustida item bo'yicha grouping qiladi.
+
+## 2026-01-26: Supplier History Rust Port
+
+Portlangan endpoint:
+
+- `GET/POST /v1/mobile/supplier/history`
+
+Go source audit:
+
+- Handler:
+  `internal/mobileapi/server.go`
+  `handleSupplierHistory`
+- Core:
+  `internal/core/service.go`
+  `SupplierHistory`
+  `purchaseReceiptCommentsByName`
+  `dispatchRecordNeedsCommentScan`
+  `isSupplierAcknowledgmentComment`
+- Direct DB:
+  `internal/erpdb/reader.go`
+  `SupplierHistory`
+
+Go contract:
+
+- Auth required.
+- Role faqat Supplier; boshqa role:
+  `403 {"error":"forbidden"}`.
+- Go handler method check qilmaydi; Rust route ham `any` qilib qo'yildi va `POST` regressiya test bilan yopildi.
+- Provider xatosi yoki provider yo'q bo'lsa:
+  `500 {"error":"supplier history failed"}`.
+- Response JSON:
+  `[]DispatchRecord`
+- Direct DB yo'li:
+  `supplier_delivery_note LIKE 'TG:%'`
+  `supplier = principal.Ref`
+  hidden Werka unannounced receiptlar chiqarilmaydi
+  `created_label` bo'yicha newest-first sort qilinadi.
+- ERPNext fallback:
+  `collectSupplierPurchaseReceipts`
+  page size `200`
+  duplicate `name` skip
+  Go kabi natija ERP list tartibida qoladi, alohida sort qilinmaydi.
+- Comment batch:
+  faqat `partial/rejected/cancelled` yoki `note` bor recordlar uchun comment scan qilinadi.
+  `Supplier ...\nTasdiqlayman...` comment topilsa note ichiga:
+  `Supplier tasdiqladi: Tasdiqlayman, shu holat bo‘lganini ko‘rdim.`
+  qo'shiladi.
+
+Rust'da qo'shilgan qismlar:
+
+- Service:
+  `supplier_history`
+- Direct DB adapter:
+  `src/erpdb/supplier_read.rs`
+- ERPNext adapter:
+  `src/erpnext/purchase_receipt/supplier_read.rs`
+- HTTP handler:
+  `src/http/handlers/supplier/read.rs`
+- Route tests:
+  `src/http/supplier_read_route_tests.rs`
+- Core tests:
+  comment scan skip/ack note path
+- Direct DB tests:
+  hidden unannounced filter va newest-first sort
+
+Qo'shimcha parity tuzatish:
+
+- ERPNext fallback mapping Go'dagi `mapPurchaseReceiptToDispatchRecord`ga yaqinlashtirildi:
+  `Accord Qabul:`
+  `Accord Qaytarildi:`
+  `Accord Sabab:`
+  `Accord Izoh:`
+  `Accord Supplier Tasdiq:`
+  remarklari note/status hisobida o'qiladi.
+
+Tartib / file hygiene:
+
+- ERPNext supplier read adapter `purchase_receipt.rs` ichiga tiqilmadi, alohida `purchase_receipt/supplier_read.rs` fayliga chiqarildi.
+- Direct DB supplier read summary+history bitta kichik `supplier_read.rs` modulida.
+- Rust source/test fayllar tekshirildi: eng katta fayl `466` qatorda, ya'ni `500` limitdan past.
+
+Test holati:
+
+- Rust `cargo test`:
+  `199 passed`, `0 failed`.
+- `cargo fmt --check` o'tdi.
+- `git diff --check` o'tdi.
+
+Natija:
+
+- Supplier domain route coverage:
+  `3/7`.
+- Supplier `history` endpointi direct DB va ERPNext fallback yo'llari bilan port qilindi.
 
 ## 2026-01-26: Supplier Summary Rust Port
 
@@ -1359,7 +1452,7 @@ Rust'da qo'shilgan qismlar:
 - Core service:
   `src/core/werka/supplier_read.rs`
 - Direct DB adapter:
-  `src/erpdb/supplier_summary.rs`
+  `src/erpdb/supplier_read.rs`
 - ERPNext adapter:
   `SupplierPurchaseReceiptLookup for ErpnextClient`
 - HTTP handler:
@@ -1386,7 +1479,7 @@ Test holati:
 Natija:
 
 - Supplier domain route coverage:
-  `2/7`.
+  `2/7` o'sha slice yakunidagi holat edi; hozirgi umumiy coverage yuqoridagi lock checklistda `3/7`.
 - Supplier `summary` endpointi direct DB va ERPNext fallback yo'llari bilan port qilindi.
 
 ## 2026-01-16: Werka Confirm Rust Port
