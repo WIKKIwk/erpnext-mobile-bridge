@@ -313,6 +313,14 @@ Bu scope ichida hozircha ERPNext login to'liq port qilinmaydi. Avval quyidagilar
 - Archive route ham Go handler kabi `any` qilindi; `POST /v1/mobile/werka/archive` regressiya test bilan yopildi.
 - Real ERPNext smoke testda `sent/received/returned` kindlari va `POST` archive array/summary response qaytargani tasdiqlandi.
 - Testlar 90 taga yetdi.
+- `/v1/mobile/werka/archive/pdf` endpoint Rust'da qo'shildi.
+- Go'dagi PDF builder contracti Rust'da alohida `http/archive_pdf.rs` moduliga ko'chirildi: `%PDF-1.4`, Courier font, 46 line/page, xref/trailer yozilishi saqlandi.
+- PDF headerlari Go bilan mos: `Content-Type: application/pdf` va `Content-Disposition: attachment; filename="werka-{kind}-{period}.pdf"`.
+- PDF ichidagi text escaping Go qoidalariga mos yozildi: `\\`, `(`, `)` escape qilinadi, newline/tab space bo'ladi, non-ASCII `?`ga aylanadi, line 132 belgida kesiladi.
+- Quantity format PDF uchun Go'dagi `%.4g` significant-digit qoidalariga mos helper bilan yopildi.
+- Archive PDF route ham Go handler kabi `any` qilindi; `POST /v1/mobile/werka/archive/pdf` regressiya test bilan yopildi.
+- Real ERPNext smoke testda archive PDF `200`, `application/pdf`, expected attachment filename va `%PDF-1.4` body qaytargani tasdiqlandi.
+- Testlar 97 taga yetdi.
 
 ## Progress Checklist
 
