@@ -18,6 +18,17 @@ This backend is responsible for:
 
 The server is intentionally the main business layer for mobile behavior. The app should stay relatively thin and defer business truth to this backend and ERPNext.
 
+## Legacy Baseline Benchmark
+
+On 2026-05-14, this Go service was benchmarked as the legacy baseline against
+the primary Rust mobile backend on the same `fedora` server, using copied
+runtime state and read-only mobile endpoints. All tested Go endpoints returned
+`200` with zero ApacheBench failures. The Rust service matched the tested
+responses successfully and showed lower latency on most read-heavy routes.
+
+Full benchmark notes are available in
+[docs/benchmarks/2026-05-14-go-vs-rust.md](docs/benchmarks/2026-05-14-go-vs-rust.md).
+
 ## Current Business Rules
 
 These rules reflect the current intended behavior:
